@@ -1,0 +1,1055 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Document, Page, pdfjs } from 'react-pdf';
+import 'react-pdf/dist/Page/TextLayer.css';
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+import { get, set } from 'idb-keyval';
+import {
+  Maximize2, Minimize2, ChevronRight, MessageSquare, StickyNote,
+  X, Sparkles, BellOff, Bell, Download, ArrowLeft, ZoomIn, ZoomOut,
+  Search, Send, Plus, FileText, BarChart2, Clock, AlertTriangle,
+  Brain, Trophy, CheckCircle2, XCircle, WifiOff, Trash2,
+  GraduationCap, BookOpen, Layers, AlignLeft, Hash
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { generateQuiz, generateSpeech } from '../services/aiService';
+import { Note, Folder as FolderType } from '../types';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+import { getBaseDomain } from '../utils';
+import { useAuth } from '@clerk/clerk-react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { showToast } from '../utils/toast';
+import { ReaderApi } from '../apis/readeer.service';
+import Anytics from '../components/Anytics';
+import { DashboardApi } from '../apis/dashboard.api';
+
+function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
+
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
+// ── Outline Item ──────────────────────────────────────────────────────────────
+function OutlineItem({ item, depth = 0, onItemClick }: { item: any; depth?: number; onItemClick: (d: any) => void }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const hasItems = item.items?.length > 0;
+  return (
+    <div>
+      <div
+        onClick={() => { if (item.dest) onItemClick(item.dest); if (hasItems) setIsOpen(!isOpen); }}
+        className={cn('flex items-center gap-1.5 px-2 py-1.5 rounded-md cursor-pointer transition-all group',
+          depth > 0 && 'ml-3 border-l')}
+        style={{ borderColor: depth > 0 ? 'var(--border)' : undefined }}
+      >
+        {hasItems
+          ? <ChevronRight size={10} className={cn('shrink-0 transition-transform', isOpen && 'rotate-90')} style={{ color: 'var(--text3)' }} />
+          : <div className="w-2.5" />}
+        <span className="text-[11px] truncate flex-1 transition-colors group-hover:text-white"
+          style={{ color: 'var(--text2)' }}>{item.title}</span>
+      </div>
+      {hasItems && isOpen && (
+        <div>{item.items.map((s: any, i: number) => <OutlineItem key={i} item={s} depth={depth + 1} onItemClick={onItemClick} />)}</div>
+      )}
+    </div>
+  );
+}
+
+// ── Left panel tabs ───────────────────────────────────────────────────────────
+type LeftTab = 'outline' | 'search' | 'notes';
+
+export default function Reader() {
+  const { pdfId } = useParams();
+  const navigate = useNavigate();
+  const { getToken } = useAuth();
+
+  // PDF state
+  const [file, setFile] = useState<File | string | null>(null);
+  const [fileName, setFileName] = useState('');
+  const [numPages, setNumPages] = useState<number | null>(null);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [scale, setScale] = useState(1.2);
+  const [pdfDoc, setPdfDoc] = useState<any>(null);
+  const [pdfOutline, setPdfOutline] = useState<any[]>([]);
+  const [loadError, setLoadError] = useState<Error | null>(null);
+
+  // UI state
+  const [leftTab, setLeftTab] = useState<LeftTab>('outline');
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(false);
+  const [isFocusMode, setIsFocusMode] = useState(false);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
+
+  // Search
+  const [pdfSearchQuery, setPdfSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<{ page: number; text: string }[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
+  // Notes & folders
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [folders, setFolders] = useState<FolderType[]>([]);
+  const [selectedFolderId, setSelectedFolderId] = useState<string | undefined>();
+  const [selectedColor, setSelectedColor] = useState<string | undefined>();
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+
+  // AI
+  const [selectedText, setSelectedText] = useState('');
+  const [selectionCoords, setSelectionCoords] = useState<{ x: number; y: number } | null>(null);
+  const [aiExplanation, setAiExplanation] = useState<string | null>(null);
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'ai'; content: string }[]>([]);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  // Quiz
+  const [quizQuestions, setQuizQuestions] = useState<any[]>([]);
+  const [showQuiz, setShowQuiz] = useState(false);
+  const [currentQuizIndex, setCurrentQuizIndex] = useState(0);
+  const [quizScore, setQuizScore] = useState(0);
+  const [quizAnswered, setQuizAnswered] = useState<number | null>(null);
+  const [showQuizResult, setShowQuizResult] = useState(false);
+
+  // Analytics
+  const [startTime] = useState(Date.now());
+  const [timeSpent, setTimeSpent] = useState(0);
+  const [pagesRead, setPagesRead] = useState<Set<number>>(new Set([1]));
+  const [distractionCount, setDistractionCount] = useState(0);
+  const [showDistractionWarning, setShowDistractionWarning] = useState(false);
+
+  const readerRef = useRef<ReadableStreamDefaultReader | null>(null);
+  const bufferRef = useRef('');
+  const containerRef = useRef<HTMLDivElement>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // ── Data loading ───────────────────────────────────────────────────────────
+  async function reopenFile(fileId: string) {
+    const handle = await get(fileId);
+    if (!handle) { showToast('File not found. Please reselect.', 'error'); return; }
+    const perm = await handle.queryPermission({ mode: 'read' });
+    if (perm !== 'granted') {
+      const np = await handle.requestPermission({ mode: 'read' });
+      if (np !== 'granted') { showToast('Permission denied.', 'error'); return; }
+    }
+    setFile(await handle.getFile());
+  }
+
+  async function fetchPdfAndData() {
+    try {
+      const r = await ReaderApi.getInstance().getRecentFileId(pdfId as string);
+      if (r.statusCode === 200) {
+        const { file_path, isUrl, fileId, name } = r.data;
+        setFileName(name);
+        if (isUrl) setFile(file_path);
+        else await reopenFile(fileId);
+      } else showToast('Failed to load PDF.', 'error');
+    } catch { showToast('Failed to load PDF.', 'error'); }
+  }
+
+  useEffect(() => { if (pdfId) fetchPdfAndData(); }, [pdfId]);
+
+  useEffect(() => {
+    const on = () => setIsOnline(true), off = () => setIsOnline(false);
+    window.addEventListener('online', on); window.addEventListener('offline', off);
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+  }, []);
+
+  useEffect(() => { setLoadError(null); setNumPages(null); setPageNumber(1); }, [file]);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatHistory]);
+
+  async function onDocumentLoadSuccess(pdf: any) {
+    setNumPages(pdf.numPages); setPdfDoc(pdf);
+    try { setPdfOutline((await pdf.getOutline()) || []); } catch { }
+  }
+
+  // ── Search ─────────────────────────────────────────────────────────────────
+  const handlePdfSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pdfSearchQuery.trim() || !pdfDoc || isSearching) return;
+    setIsSearching(true);
+    const results: { page: number; text: string }[] = [];
+    try {
+      for (let i = 1; i <= pdfDoc.numPages && results.length < 20; i++) {
+        const page = await pdfDoc.getPage(i);
+        const text = (await page.getTextContent()).items.map((x: any) => x.str).join(' ');
+        if (text.toLowerCase().includes(pdfSearchQuery.toLowerCase())) {
+          const idx = text.toLowerCase().indexOf(pdfSearchQuery.toLowerCase());
+          results.push({ page: i, text: `...${text.substring(Math.max(0, idx - 40), idx + pdfSearchQuery.length + 40)}...` });
+        }
+      }
+      setSearchResults(results);
+    } catch { } finally { setIsSearching(false); }
+  };
+
+  // ── Text selection ─────────────────────────────────────────────────────────
+  const handleTextSelection = () => {
+    const sel = window.getSelection();
+    const text = sel?.toString().trim();
+    if (text && text.length > 3) {
+      setSelectedText(text);
+      const rect = sel?.getRangeAt(0).getBoundingClientRect();
+      if (rect) setSelectionCoords({ x: rect.left + rect.width / 2, y: rect.top - 10 });
+    } else if (!aiExplanation && !isAiLoading) {
+      setSelectedText(''); setSelectionCoords(null);
+    }
+  };
+
+  // ── AI ─────────────────────────────────────────────────────────────────────
+  const handleAskAI = async (type: 'explain' | 'summarize' | 'examples' = 'explain') => {
+    if (!isOnline) return;
+    setRightOpen(true); setIsAiLoading(true);
+    setChatHistory(prev => [...prev, { role: 'ai', content: '' }]);
+    const aiIdx = chatHistory.length;
+    try {
+      const token = await getToken({ template: 'server' });
+      const response = await fetch(`${getBaseDomain()}model/ai-tutor`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ user_input: selectedText, type }),
+      });
+      if (!response.ok || !response.body) throw new Error();
+      const reader = response.body.getReader();
+      readerRef.current = reader;
+      const decoder = new TextDecoder();
+      let text = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        bufferRef.current += decoder.decode(value, { stream: true });
+        while (true) {
+          const le = bufferRef.current.indexOf('\n');
+          if (le === -1) break;
+          const line = bufferRef.current.slice(0, le).trim();
+          bufferRef.current = bufferRef.current.slice(le + 1);
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6);
+          if (data === '[DONE]') break;
+          try {
+            const p = JSON.parse(data);
+            if (p?.content) {
+              text += p.content;
+              const snap = text;
+              setChatHistory(prev => { const u = [...prev]; if (u[aiIdx]) u[aiIdx] = { ...u[aiIdx], content: snap }; return u; });
+            }
+          } catch { }
+        }
+      }
+      setAiExplanation(text);
+      if (text && selectedText) {
+        saveToNotes();
+      }
+    } catch { showToast('AI request failed', 'error'); }
+    finally { setIsAiLoading(false); }
+  };
+
+  const handleFollowUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim() || isAiLoading || !isOnline) return;
+    const msg = chatInput.trim(); setChatInput(''); setIsAiLoading(true);
+    setChatHistory(prev => [...prev, { role: 'user', content: msg }, { role: 'ai', content: '' }]);
+    const aiIdx = chatHistory.length + 1;
+    try {
+      const token = await getToken({ template: 'server' });
+      const response = await fetch(`${getBaseDomain()}model/ai-tutor`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ user_input: msg, type: 'chat', context: selectedText, history: chatHistory }),
+      });
+      if (!response.ok || !response.body) throw new Error();
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let text = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        bufferRef.current += decoder.decode(value, { stream: true });
+        while (true) {
+          const le = bufferRef.current.indexOf('\n');
+          if (le === -1) break;
+          const line = bufferRef.current.slice(0, le).trim();
+          bufferRef.current = bufferRef.current.slice(le + 1);
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6); if (data === '[DONE]') break;
+          try { const p = JSON.parse(data); if (p?.content) { text += p.content; setChatHistory(prev => { const u = [...prev]; if (u[aiIdx]) u[aiIdx] = { ...u[aiIdx], content: text }; return u; }); } } catch { }
+        }
+      }
+    } catch { setChatHistory(prev => { const u = [...prev]; if (u[aiIdx]) u[aiIdx] = { ...u[aiIdx], content: 'Error processing request.' }; return u; }); }
+    finally { setIsAiLoading(false); readerRef.current = null; }
+  };
+
+  // ── Quiz ───────────────────────────────────────────────────────────────────
+  const handleGenerateQuiz = async () => {
+    if (!selectedText || !isOnline) return;
+    setIsAiLoading(true);
+    const questions = await generateQuiz(selectedText);
+    if (questions.length > 0) { setQuizQuestions(questions); setCurrentQuizIndex(0); setQuizScore(0); setQuizAnswered(null); setShowQuiz(true); setShowQuizResult(false); }
+    setIsAiLoading(false); setSelectedText('');
+  };
+
+  // ── Misc ───────────────────────────────────────────────────────────────────
+  const scrollToPage = (p: number) => document.getElementById(`page-${p}`)?.scrollIntoView({ behavior: 'smooth' });
+
+  const handleOutlineClick = async (dest: any) => {
+    if (!pdfDoc || !dest) return;
+    try {
+      const d = typeof dest === 'string' ? await pdfDoc.getDestination(dest) : dest;
+      if (d) scrollToPage((await pdfDoc.getPageIndex(d[0])) + 1);
+    } catch { }
+  };
+
+  const toggleFullScreen = () => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => { });
+    else document.exitFullscreen();
+  };
+
+  useEffect(() => {
+    const h = () => setIsFullScreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', h);
+    return () => document.removeEventListener('fullscreenchange', h);
+  }, []);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(e => { if (e.isIntersecting) setPageNumber(parseInt(e.target.id.split('-')[1])); });
+    }, { threshold: 0.5 });
+    document.querySelectorAll('.pdf-page-wrapper').forEach(p => observer.observe(p));
+    return () => observer.disconnect();
+  }, [numPages]);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout; let hasLeft = false;
+    const h = () => {
+      if (document.visibilityState === 'hidden') { hasLeft = true; setDistractionCount(p => p + 1); }
+      else if (hasLeft) { setShowDistractionWarning(true); hasLeft = false; timer = setTimeout(() => setShowDistractionWarning(false), 3000); }
+    };
+    document.addEventListener('visibilitychange', h);
+    return () => { document.removeEventListener('visibilitychange', h); clearTimeout(timer); };
+  }, []);
+
+  useEffect(() => {
+    const t = setInterval(() => setTimeSpent(Math.floor((Date.now() - startTime) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, [startTime]);
+
+  useEffect(() => { setPagesRead(p => new Set([...p, pageNumber])); }, [pageNumber]);
+
+  const calculateFocusScore = () => Math.max(0, Math.min(100, 100 - distractionCount * 5 + Math.min(20, Math.floor(timeSpent / 300) * 5)));
+  const formatTime = (s: number) => `${Math.floor(s / 60)}m ${s % 60}s`;
+
+  const saveToNotes = async () => {
+    try {
+      // If no explicit selection, try to get the last user message or AI explanation from chat
+      const lastUserMsg = [...chatHistory].reverse().find(m => m.role === 'user')?.content;
+      const noteText = selectedText || lastUserMsg || 'Note';
+      const noteExplanation = aiExplanation || [...chatHistory].reverse().find(m => m.role === 'ai')?.content;
+
+      const response = await ReaderApi.getInstance().saveNote({
+        text: selectedText || noteText,
+        explanation: noteExplanation || undefined,
+        pageNumber,
+        folderId: selectedFolderId,
+        highlight: selectedColor,
+        fileId: pdfId as string,
+      });
+      if (response.statusCode === 201) {
+        setSelectedText(''); setAiExplanation(null); setChatHistory([]); loadNotes();
+        showToast('Note saved', 'success');
+
+      }
+      else showToast('Failed to save note', 'error');
+
+    } catch (error) {
+      showToast('Failed to save note', 'error');
+    }
+  };
+
+  const LEFT_W = 260;
+  const RIGHT_W = 360;
+  async function loadNotes() {
+    try {
+      const r = await ReaderApi.getInstance().getNotesByPdfId(pdfId as string);
+      if (r.statusCode === 200) setNotes(r.data);
+      else showToast('Failed to load notes', 'error');
+    } catch (error) {
+      showToast('Failed to load notes', 'error');
+    }
+  }
+  const handleCreateFolder = async () => {
+    try {
+      const response = await DashboardApi.getInstance().createFolder({ name: newFolderName });
+      if (response.statusCode === 201) {
+        setNewFolderName('');
+        setIsCreatingFolder(false);
+        loadFolders()
+        showToast('Folder created', 'success');
+
+      } else {
+        showToast('Failed to create folder', 'error');
+      }
+    } catch (error) {
+      showToast('Failed to create folder', 'error');
+    }
+  };
+  async function loadFolders() {
+    try {
+      const r = await DashboardApi.getInstance().getFolders();
+      if (r.statusCode === 200) setFolders(r.data);
+      else showToast('Failed to load folders', 'error');
+    } catch { showToast('Error fetching folders', 'error'); }
+  }
+  async function handleDeleteNote(noteId: string) { 
+    try {
+      const response = await ReaderApi.getInstance().deleteNote(noteId);
+      if (response.statusCode === 200) {
+        loadNotes();
+        showToast('Note deleted', 'success');
+      } else {
+        showToast('Failed to delete note', 'error');
+      }
+  }catch (error) {
+    showToast('Failed to delete note', 'error');
+  }
+  }
+
+  useEffect(() => { loadFolders();loadNotes() }, []);
+
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  return (
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600;700&display=swap');
+        :root {
+          --bg: #0C0C0E; --surface: #141416; --surface2: #1A1A1E; --surface3: #202025;
+          --border: #252528; --border2: #2E2E33;
+          --text: #F2F2F3; --text2: #8A8A94; --text3: #4A4A52;
+          --accent: #E8C77A; --accent-dim: rgba(232,199,122,0.12);
+          --danger: #F87171; --success: #4ADE80;
+        }
+        * { box-sizing: border-box; }
+        .f-serif { font-family: 'Instrument Serif', Georgia, serif; }
+        .f-sans { font-family: 'Geist', system-ui, sans-serif; }
+        .sb::-webkit-scrollbar { width: 3px; height: 3px; }
+        .sb::-webkit-scrollbar-track { background: transparent; }
+        .sb::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
+        /* react-pdf dark mode */
+        .pdf-container .react-pdf__Page { background: transparent !important; }
+        .pdf-container .react-pdf__Page canvas { border-radius: 4px; box-shadow: 0 2px 16px rgba(0,0,0,0.5); }
+        .pdf-page-wrapper { margin-bottom: 12px; }
+        /* text layer */
+        .react-pdf__Page__textContent { color: transparent; }
+        .react-pdf__Page__textContent ::selection { background: rgba(232,199,122,0.35); }
+        .btn { display: inline-flex; align-items: center; gap: 6px; border-radius: 7px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.12s; border: none; font-family: 'Geist', system-ui, sans-serif; }
+        .btn-ghost { background: transparent; color: var(--text2); padding: 6px 8px; }
+        .btn-ghost:hover { background: var(--surface2); color: var(--text); }
+        .btn-accent { background: var(--accent); color: #0C0C0E; font-weight: 600; padding: 6px 12px; }
+        .btn-accent:hover { opacity: 0.88; }
+        .btn-dark { background: var(--surface2); color: var(--text2); border: 1px solid var(--border2); padding: 5px 10px; }
+        .btn-dark:hover { background: var(--surface3); color: var(--text); border-color: var(--border2); }
+        .icon-btn { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 7px; cursor: pointer; transition: all 0.12s; background: transparent; border: none; color: var(--text2); }
+        .icon-btn:hover { background: var(--surface2); color: var(--text); }
+        .icon-btn.active { background: var(--accent-dim); color: var(--accent); }
+        .panel { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+        .panel-right { background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+        .tab-btn { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 10px 4px; cursor: pointer; transition: all 0.12s; border: none; background: transparent; color: var(--text3); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; border-right: 1px solid var(--border); }
+        .tab-btn:last-child { border-right: none; }
+        .tab-btn:hover { background: var(--surface2); color: var(--text2); }
+        .tab-btn.active { background: var(--accent-dim); color: var(--accent); }
+        .input-base { background: var(--surface2); border: 1px solid var(--border2); color: var(--text); border-radius: 7px; font-family: 'Geist', system-ui, sans-serif; font-size: 12px; transition: border-color 0.15s; outline: none; }
+        .input-base::placeholder { color: var(--text3); }
+        .input-base:focus { border-color: var(--accent); }
+        .section-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text3); padding: 12px 12px 6px; }
+      `}</style>
+
+      <div className="f-sans flex h-screen overflow-hidden" style={{ background: 'var(--bg)', color: 'var(--text)' }}>
+
+        {/* ── Top Nav ──────────────────────────────────────────────────────── */}
+        <AnimatePresence>
+          {!isFocusMode && (
+            <motion.div
+              initial={{ y: -44 }} animate={{ y: 0 }} exit={{ y: -44 }}
+              transition={{ duration: 0.2 }}
+              className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-3 h-11 border-b"
+              style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+            >
+              {/* Left: back + file name */}
+              <div className="flex items-center gap-2">
+                <button className="btn btn-ghost" onClick={() => navigate('/dashboard')}>
+                  <ArrowLeft size={14} />
+                  <span className="hidden sm:inline">Dashboard</span>
+                </button>
+                <div className="w-px h-4 mx-1" style={{ background: 'var(--border2)' }} />
+                <div className="flex items-center gap-1.5">
+                  <div className="w-5 h-5 rounded flex items-center justify-center shrink-0"
+                    style={{ background: 'var(--accent-dim)' }}>
+                    <BookOpen size={11} style={{ color: 'var(--accent)' }} />
+                  </div>
+                  <span className="text-xs font-medium max-w-[200px] truncate hidden sm:block"
+                    style={{ color: 'var(--text2)' }}>
+                    {fileName || 'Loading…'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Center: page + zoom */}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 px-2 py-1 rounded-md"
+                  style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+                  <Hash size={10} style={{ color: 'var(--text3)' }} />
+                  <span className="text-xs font-mono" style={{ color: 'var(--text2)' }}>
+                    {pageNumber} <span style={{ color: 'var(--text3)' }}>/ {numPages || '?'}</span>
+                  </span>
+                </div>
+                <div className="flex items-center rounded-md overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--surface2)' }}>
+                  <button className="icon-btn rounded-none w-7 h-7" onClick={() => setScale(p => Math.max(0.4, p - 0.1))}>
+                    <ZoomOut size={12} />
+                  </button>
+                  <span className="text-[10px] font-bold w-10 text-center" style={{ color: 'var(--text2)' }}>
+                    {Math.round(scale * 100)}%
+                  </span>
+                  <button className="icon-btn rounded-none w-7 h-7" onClick={() => setScale(p => Math.min(3, p + 0.1))}>
+                    <ZoomIn size={12} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Right: actions */}
+              <div className="flex items-center gap-1">
+                <div className="hidden lg:flex items-center gap-1.5 px-2 py-1 rounded-md mr-1"
+                  style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                  <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: 'var(--text3)' }}>Focus Active</span>
+                </div>
+
+                <button className="icon-btn" onClick={() => setShowAnalytics(true)} title="Analytics">
+                  <BarChart2 size={14} />
+                </button>
+                <button className="icon-btn" onClick={toggleFullScreen} title="Fullscreen">
+                  {isFullScreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                </button>
+                <button
+                  className={cn('btn', rightOpen ? 'btn-accent' : 'btn-dark')}
+                  onClick={() => setRightOpen(v => !v)}
+                >
+                  <Sparkles size={12} />
+                  <span className="hidden sm:inline">AI Tutor</span>
+                </button>
+                <button className="btn btn-dark" onClick={() => setIsFocusMode(true)}>
+                  <BellOff size={12} />
+                  <span className="hidden sm:inline">Focus</span>
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── Body (below nav) ─────────────────────────────────────────────── */}
+        <div className="flex flex-1 min-h-0" style={{ paddingTop: isFocusMode ? 0 : 44 }}>
+
+          {/* Left panel */}
+          <AnimatePresence initial={false}>
+            {!isFocusMode && leftOpen && (
+              <motion.div
+                initial={{ width: 0, opacity: 0 }}
+                animate={{ width: LEFT_W, opacity: 1 }}
+                exit={{ width: 0, opacity: 0 }}
+                transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                className="panel shrink-0"
+                style={{ width: LEFT_W }}
+              >
+                {/* Tab strip */}
+                <div className="flex border-b shrink-0" style={{ borderColor: 'var(--border)' }}>
+                  <button className={cn('tab-btn', leftTab === 'outline' && 'active')} onClick={() => setLeftTab('outline')}>
+                    <Layers size={13} />
+                    Contents
+                  </button>
+                  <button className={cn('tab-btn', leftTab === 'search' && 'active')} onClick={() => setLeftTab('search')}>
+                    <Search size={13} />
+                    Search
+                  </button>
+                  <button className={cn('tab-btn', leftTab === 'notes' && 'active')} onClick={() => setLeftTab('notes')}>
+                    <StickyNote size={13} />
+                    Notes
+                  </button>
+                  <button className="icon-btn ml-auto mr-1 shrink-0 self-center" onClick={() => setLeftOpen(false)}>
+                    <X size={12} />
+                  </button>
+                </div>
+
+                {/* Tab content */}
+                <div className="flex-1 overflow-y-auto sb">
+
+                  {/* Outline */}
+                  {leftTab === 'outline' && (
+                    <div className="p-2">
+                      {pdfOutline.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+                          <AlignLeft size={20} style={{ color: 'var(--text3)' }} className="mb-2" />
+                          <p className="text-xs" style={{ color: 'var(--text3)' }}>No outline available</p>
+                        </div>
+                      ) : pdfOutline.map((item, i) => (
+                        <OutlineItem key={i} item={item} onItemClick={handleOutlineClick} />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Search */}
+                  {leftTab === 'search' && (
+                    <div className="p-2">
+                      <form onSubmit={handlePdfSearch} className="flex gap-1 mb-3">
+                        <input value={pdfSearchQuery} onChange={e => setPdfSearchQuery(e.target.value)}
+                          placeholder="Search in document…" className="input-base flex-1 px-2.5 py-2" />
+                        <button type="submit" disabled={isSearching} className="btn btn-accent px-2.5 py-2">
+                          {isSearching ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" /> : <Search size={12} />}
+                        </button>
+                      </form>
+                      {searchResults.length > 0 && (
+                        <div className="space-y-1">
+                          {searchResults.map((r, i) => (
+                            <button key={i} onClick={() => scrollToPage(r.page)}
+                              className="w-full text-left p-2 rounded-md transition-colors text-xs"
+                              style={{ background: 'var(--surface2)' }}
+                              onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface3)')}
+                              onMouseLeave={e => (e.currentTarget.style.background = 'var(--surface2)')}
+                            >
+                              <div className="flex items-center gap-1 mb-1">
+                                <span className="font-bold text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>p.{r.page}</span>
+                              </div>
+                              <p className="line-clamp-2 leading-relaxed" style={{ color: 'var(--text2)' }}>{r.text}</p>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Notes */}
+                  {leftTab === 'notes' && (
+                    <div className="p-2 space-y-1.5">
+                      {notes.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+                          <StickyNote size={20} style={{ color: 'var(--text3)' }} className="mb-2" />
+                          <p className="text-xs" style={{ color: 'var(--text3)' }}>No notes yet</p>
+                          <p className="text-[10px] mt-1" style={{ color: 'var(--text3)' }}>Select text to create</p>
+                        </div>
+                      ) : notes.map(note => (
+                        <div key={note._id} className="p-2.5 rounded-lg border relative group"
+                          style={{ background: note.highlight ?? 'var(--surface2)', borderColor: note.highlight ? 'transparent' : 'var(--border)' }}>
+                          <p className="text-[10px] font-bold uppercase tracking-widest mb-1"
+                            style={{ color: note.highlight ? 'rgba(0,0,0,0.4)' : 'var(--text3)' }}>p.{note.pageNumber}</p>
+                          <p className="text-[11px] italic line-clamp-2 leading-relaxed"
+                            style={{ color: note.highlight ? 'rgba(0,0,0,0.6)' : 'var(--text2)' }}>"{note.text}"</p>
+                          <button onClick={() => handleDeleteNote(note._id as string)}
+                            className="absolute top-1.5 right-1.5 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                            style={{ color: 'var(--danger)' }}>
+                            <Trash2 size={10} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Page jump */}
+                <div className="border-t p-2 shrink-0" style={{ borderColor: 'var(--border)' }}>
+                  <p className="section-label p-0 mb-1.5">Jump to page</p>
+                  <div className="flex gap-1 flex-wrap max-h-20 overflow-y-auto sb">
+                    {numPages && Array.from({ length: numPages }, (_, i) => i + 1).map(p => (
+                      <button key={p} onClick={() => scrollToPage(p)}
+                        className={cn('text-[10px] font-mono w-7 h-7 rounded-md transition-all',
+                          pageNumber === p ? 'font-bold' : '')}
+                        style={{
+                          background: pageNumber === p ? 'var(--accent)' : 'var(--surface2)',
+                          color: pageNumber === p ? '#0C0C0E' : 'var(--text3)',
+                          border: `1px solid ${pageNumber === p ? 'transparent' : 'var(--border)'}`,
+                        }}
+                      >{p}</button>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Toggle left panel button when closed */}
+          {!isFocusMode && !leftOpen && (
+            <div className="flex flex-col items-center pt-2 px-1 border-r shrink-0" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+              <button className="icon-btn" onClick={() => setLeftOpen(true)} title="Open panel">
+                <Layers size={13} />
+              </button>
+            </div>
+          )}
+
+          {/* PDF viewport */}
+          <div
+            ref={containerRef}
+            className="flex-1 overflow-y-auto sb flex flex-col items-center py-4 relative"
+            style={{ background: '#181818' }}
+            onMouseUp={handleTextSelection}
+          >
+            {/* Distraction banner */}
+            <AnimatePresence>
+              {showDistractionWarning && (
+                <motion.div
+                  initial={{ opacity: 0, y: -20, x: '-50%' }}
+                  animate={{ opacity: 1, y: 8, x: '-50%' }}
+                  exit={{ opacity: 0, y: -20, x: '-50%' }}
+                  className="fixed top-14 left-1/2 z-50 flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium shadow-xl"
+                  style={{ background: 'var(--surface)', border: '1px solid var(--border2)', color: 'var(--text)' }}
+                >
+                  <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  Stay focused 📖
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {loadError ? (
+              <div className="flex flex-col items-center justify-center p-8 text-center max-w-md mx-auto h-full">
+                <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
+                  style={{ background: 'rgba(248,113,113,0.1)', color: 'var(--danger)' }}>
+                  <AlertTriangle size={28} />
+                </div>
+                <h3 className="f-serif text-xl mb-2">Unable to Load PDF</h3>
+                <p className="text-sm mb-6 leading-relaxed" style={{ color: 'var(--text2)' }}>
+                  {typeof file === 'string'
+                    ? 'This remote PDF couldn\'t be loaded (likely CORS restrictions).'
+                    : 'There was an error loading this PDF file.'}
+                </p>
+                {typeof file === 'string' && (
+                  <button onClick={() => window.open(file, '_blank')}
+                    className="btn btn-accent mb-4 w-full justify-center py-2.5">
+                    <Download size={13} /> Open in New Tab
+                  </button>
+                )}
+                <button onClick={() => navigate('/dashboard')} className="btn btn-ghost">
+                  <ArrowLeft size={13} /> Back to Dashboard
+                </button>
+              </div>
+            ) : (
+              <Document
+                file={file}
+                onLoadSuccess={onDocumentLoadSuccess}
+                onLoadError={err => setLoadError(err)}
+                loading={
+                  <div className="flex flex-col items-center justify-center py-20">
+                    <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin mb-3"
+                      style={{ borderColor: 'var(--border2)', borderTopColor: 'var(--accent)' }} />
+                    <p className="text-xs" style={{ color: 'var(--text3)' }}>Loading document…</p>
+                  </div>
+                }
+                className="pdf-container"
+              >
+                {Array.from({ length: numPages || 0 }, (_, i) => (
+                  <div key={i} id={`page-${i + 1}`} className="pdf-page-wrapper">
+                    <Page pageNumber={i + 1} renderTextLayer renderAnnotationLayer scale={scale} />
+                  </div>
+                ))}
+              </Document>
+            )}
+
+            {/* Selection bubble */}
+            <AnimatePresence>
+              {selectedText && !aiExplanation && selectionCoords && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, y: 10, x: '-50%' }}
+                  animate={{ opacity: 1, scale: 1, y: -8, x: '-50%' }}
+                  exit={{ opacity: 0, scale: 0.9, y: 10, x: '-50%' }}
+                  style={{ position: 'fixed', left: selectionCoords.x, top: selectionCoords.y, zIndex: 200 }}
+                >
+                  <div className="rounded-xl overflow-hidden shadow-2xl border"
+                    style={{ background: 'var(--surface)', borderColor: 'var(--border2)', minWidth: 180 }}>
+                    {isAiLoading ? (
+                      <div className="flex items-center gap-2.5 px-3 py-3 text-xs font-medium" style={{ color: 'var(--text2)' }}>
+                        <div className="w-3 h-3 border border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
+                        Thinking…
+                      </div>
+                    ) : !isOnline ? (
+                      <div className="p-3 text-xs flex items-center gap-2" style={{ color: 'var(--danger)' }}>
+                        <WifiOff size={11} /> Offline — AI unavailable
+                      </div>
+                    ) : (
+                      <>
+                        {[
+                          { label: 'Ask AI Tutor', icon: <GraduationCap size={12} style={{ color: 'var(--accent)' }} />, fn: () => handleAskAI('explain'), accent: true },
+                          { label: 'Summarize', icon: <FileText size={12} style={{ color: '#60A5FA' }} />, fn: () => handleAskAI('summarize') },
+                          { label: 'Examples', icon: <Plus size={12} style={{ color: '#4ADE80' }} />, fn: () => handleAskAI('examples') },
+                          { label: 'Quiz me', icon: <Brain size={12} style={{ color: '#F472B6' }} />, fn: handleGenerateQuiz },
+                        ].map(({ label, icon, fn, accent }) => (
+                          <button key={label} onClick={fn}
+                            className="flex items-center gap-2 w-full px-3 py-2 text-xs font-medium border-b transition-colors text-left"
+                            style={{
+                              borderColor: 'var(--border)',
+                              background: accent ? 'var(--accent-dim)' : 'transparent',
+                              color: 'var(--text)',
+                            }}
+                            onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface2)')}
+                            onMouseLeave={e => (e.currentTarget.style.background = accent ? 'var(--accent-dim)' : 'transparent')}
+                          >
+                            {icon} {label}
+                          </button>
+                        ))}
+                        <div className="flex items-center gap-1 px-3 py-1.5 border-b" style={{ borderColor: 'var(--border)' }}>
+                          {[undefined, '#FEE2E2', '#FEF3C7', '#D1FAE5', '#DBEAFE'].map(c => (
+                            <button key={c || 'none'} onClick={() => setSelectedColor(c)}
+                              className={cn('w-4 h-4 rounded-full transition-transform hover:scale-110 border',
+                                selectedColor === c ? 'scale-110 border-white' : 'border-transparent')}
+                              style={{ background: c || 'rgba(255,255,255,0.08)' }} />
+                          ))}
+                          <button onClick={saveToNotes} className="icon-btn ml-auto w-6 h-6" title="Save note">
+                            <StickyNote size={11} />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <div className="mx-auto mt-0 w-2 h-2 rotate-45 -mt-1"
+                    style={{ background: 'var(--surface)', border: '1px solid var(--border2)', borderTop: 'none', borderLeft: 'none', width: 8, height: 8, marginLeft: 'calc(50% - 4px)' }} />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Focus mode exit */}
+            <AnimatePresence>
+              {isFocusMode && (
+                <motion.button
+                  initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+                  onClick={() => setIsFocusMode(false)}
+                  className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-full shadow-2xl text-sm font-semibold"
+                  style={{ background: 'var(--surface)', border: '1px solid var(--border2)', color: 'var(--text)' }}
+                >
+                  <Bell size={14} /> Exit Focus Mode
+                </motion.button>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Right AI panel */}
+          <AnimatePresence initial={false}>
+            {rightOpen && (
+              <motion.div
+                initial={{ width: 0, opacity: 0 }}
+                animate={{ width: RIGHT_W, opacity: 1 }}
+                exit={{ width: 0, opacity: 0 }}
+                transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                className="panel-right shrink-0 flex flex-col"
+                style={{ width: RIGHT_W }}
+              >
+                {/* Header */}
+                <div className="shrink-0 flex items-center justify-between px-3 h-10 border-b"
+                  style={{ borderColor: 'var(--border)', background: 'var(--surface2)' }}>
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ background: 'var(--accent-dim)' }}>
+                      <GraduationCap size={11} style={{ color: 'var(--accent)' }} />
+                    </div>
+                    <span className="text-xs font-semibold" style={{ color: 'var(--text)' }}>AI Tutor</span>
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button className="btn btn-ghost text-[10px] px-2 py-1"
+                      onClick={() => { setAiExplanation(null); setSelectedText(''); setChatHistory([]); }}>
+                      Clear
+                    </button>
+                    <button className="icon-btn w-6 h-6" onClick={() => { setRightOpen(false); setAiExplanation(null); setSelectedText(''); }}>
+                      <X size={12} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Chat area */}
+                <div className="flex-1 overflow-y-auto sb p-3 space-y-3">
+                  {chatHistory.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-center py-8 px-4">
+                      <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-3"
+                        style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+                        <MessageSquare size={18} style={{ color: 'var(--text3)' }} />
+                      </div>
+                      <p className="text-sm font-medium mb-1" style={{ color: 'var(--text2)' }}>AI Tutor ready</p>
+                      <p className="text-xs leading-relaxed" style={{ color: 'var(--text3)' }}>
+                        Select any text in the document to explain, summarize, or quiz yourself.
+                      </p>
+                    </div>
+                  ) : chatHistory.map((msg, idx) => (
+                    <div key={idx} className={cn('flex', msg.role === 'user' ? 'justify-end' : 'justify-start')}>
+                      <div className={cn('max-w-[88%] rounded-xl px-3 py-2.5 text-xs leading-relaxed',
+                        msg.role === 'user' ? 'rounded-tr-none' : 'rounded-tl-none')}
+                        style={{
+                          background: msg.role === 'user' ? 'var(--accent)' : 'var(--surface2)',
+                          color: msg.role === 'user' ? '#0C0C0E' : 'var(--text)',
+                          border: msg.role === 'ai' ? '1px solid var(--border)' : 'none',
+                        }}>
+                        {msg.content || (
+                          <span className="flex gap-1">
+                            {[0, 0.2, 0.4].map(d => (
+                              <span key={d} className="w-1.5 h-1.5 rounded-full animate-bounce inline-block"
+                                style={{ background: 'var(--text3)', animationDelay: `${d}s` }} />
+                            ))}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  <div ref={chatEndRef} />
+                </div>
+
+                {/* Selected text */}
+                {selectedText && (
+                  <div className="shrink-0 mx-3 mb-2 p-2.5 rounded-lg border text-[11px] italic leading-relaxed line-clamp-2"
+                    style={{ background: 'var(--surface2)', borderColor: 'var(--border)', color: 'var(--text2)' }}>
+                    &ldquo;{selectedText}&rdquo;
+                  </div>
+                )}
+
+                {/* Folder + color row */}
+                <div className="shrink-0 px-3 pb-2 flex items-center gap-2 flex-wrap">
+                  <select value={selectedFolderId || ''} onChange={e => setSelectedFolderId(e.target.value || undefined)}
+                    className="input-base text-[10px] px-2 py-1 flex-1 min-w-0">
+                    <option value="">General</option>
+                    {folders.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}
+                  </select>
+                  {isCreatingFolder ? (
+                    <div className="flex items-center gap-1">
+                      <input autoFocus value={newFolderName} onChange={e => setNewFolderName(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') { handleCreateFolder() }
+                          if (e.key === 'Escape') setIsCreatingFolder(false);
+                        }}
+                        placeholder="Name…" className="input-base px-2 py-1 text-[10px] w-24" />
+                      <button onClick={() => setIsCreatingFolder(false)} className="icon-btn w-6 h-6"><X size={10} /></button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setIsCreatingFolder(true)} className="icon-btn w-7 h-7 shrink-0"><Plus size={12} /></button>
+                  )}
+                  <div className="flex items-center gap-0.5">
+                    {[undefined, '#FEE2E2', '#FEF3C7', '#D1FAE5', '#DBEAFE'].map(c => (
+                      <button key={c || 'none'} onClick={() => setSelectedColor(c)}
+                        className={cn('w-3.5 h-3.5 rounded-full border transition-transform hover:scale-110',
+                          selectedColor === c ? 'scale-110 border-white' : 'border-transparent')}
+                        style={{ background: c || 'rgba(255,255,255,0.1)' }} />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Input */}
+                <div className="shrink-0 px-3 pb-3">
+                  {aiExplanation && (
+                    <button onClick={saveToNotes} className="btn btn-dark w-full justify-center py-2 mb-2 text-[11px]">
+                      <StickyNote size={12} /> Save to Notes
+                    </button>
+                  )}
+                  {isOnline ? (
+                    <form onSubmit={handleFollowUp} className="flex gap-2">
+                      <input value={chatInput} onChange={e => setChatInput(e.target.value)}
+                        placeholder="Ask your tutor anything…"
+                        className="input-base flex-1 px-3 py-2 text-xs" />
+                      <button type="submit" disabled={!chatInput.trim() || isAiLoading}
+                        className="btn btn-accent px-2.5 py-2 disabled:opacity-40">
+                        <Send size={12} />
+                      </button>
+                    </form>
+                  ) : (
+                    <div className="flex items-center gap-2 p-2.5 rounded-lg text-xs"
+                      style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', color: 'var(--danger)' }}>
+                      <WifiOff size={12} /> Offline — follow-up disabled
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* ── Quiz Modal ────────────────────────────────────────────────────── */}
+        <AnimatePresence>
+          {showQuiz && (
+            <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}
+                onClick={() => setShowQuiz(false)} />
+              <motion.div initial={{ opacity: 0, scale: 0.95, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 16 }}
+                className="relative w-full max-w-md rounded-2xl overflow-hidden shadow-2xl"
+                style={{ background: 'var(--surface)', border: '1px solid var(--border2)' }}>
+                {!showQuizResult ? (
+                  <div className="p-6">
+                    <div className="flex items-center justify-between mb-5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-xl flex items-center justify-center"
+                          style={{ background: 'rgba(244,114,182,0.12)', color: '#F472B6' }}>
+                          <Brain size={16} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Knowledge Check</p>
+                          <p className="text-[10px]" style={{ color: 'var(--text3)' }}>Q{currentQuizIndex + 1} of {quizQuestions.length}</p>
+                        </div>
+                      </div>
+                      <button className="icon-btn" onClick={() => setShowQuiz(false)}><X size={14} /></button>
+                    </div>
+                    <p className="text-sm font-medium mb-4 leading-relaxed" style={{ color: 'var(--text)' }}>
+                      {quizQuestions[currentQuizIndex].question}
+                    </p>
+                    <div className="space-y-2 mb-4">
+                      {quizQuestions[currentQuizIndex].options.map((opt: string, i: number) => {
+                        const correct = i === quizQuestions[currentQuizIndex].correctAnswer;
+                        const selected = quizAnswered === i;
+                        return (
+                          <button key={i} onClick={() => { if (quizAnswered !== null) return; setQuizAnswered(i); if (correct) setQuizScore(p => p + 1); }}
+                            className="w-full text-left px-3.5 py-2.5 rounded-xl text-sm font-medium flex items-center justify-between transition-all"
+                            style={{
+                              background: quizAnswered === null ? 'var(--surface2)' : correct ? 'rgba(74,222,128,0.1)' : selected ? 'rgba(248,113,113,0.1)' : 'var(--surface2)',
+                              border: `1px solid ${quizAnswered === null ? 'var(--border)' : correct ? 'rgba(74,222,128,0.4)' : selected ? 'rgba(248,113,113,0.4)' : 'var(--border)'}`,
+                              color: quizAnswered === null ? 'var(--text)' : correct ? '#4ADE80' : selected ? 'var(--danger)' : 'var(--text3)',
+                              opacity: quizAnswered !== null && !correct && !selected ? 0.4 : 1,
+                            }}>
+                            {opt}
+                            {quizAnswered !== null && (correct ? <CheckCircle2 size={14} /> : selected ? <XCircle size={14} /> : null)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {quizAnswered !== null && (
+                      <div className="mb-4 p-3 rounded-xl text-xs leading-relaxed"
+                        style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text2)' }}>
+                        <span className="font-bold" style={{ color: 'var(--text)' }}>Explanation: </span>
+                        {quizQuestions[currentQuizIndex].explanation}
+                      </div>
+                    )}
+                    <button onClick={() => { if (currentQuizIndex < quizQuestions.length - 1) { setCurrentQuizIndex(p => p + 1); setQuizAnswered(null); } else setShowQuizResult(true); }}
+                      disabled={quizAnswered === null}
+                      className="btn btn-accent w-full justify-center py-2.5 text-sm disabled:opacity-30">
+                      {currentQuizIndex === quizQuestions.length - 1 ? 'Finish' : 'Next'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="p-8 text-center">
+                    <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
+                      style={{ background: 'rgba(232,199,122,0.12)', color: 'var(--accent)' }}>
+                      <Trophy size={28} />
+                    </div>
+                    <h3 className="f-serif text-2xl mb-1" style={{ color: 'var(--text)' }}>Quiz Complete!</h3>
+                    <p className="text-sm mb-5" style={{ color: 'var(--text2)' }}>{quizScore} / {quizQuestions.length} correct</p>
+                    <div className="grid grid-cols-2 gap-3 mb-5">
+                      {[
+                        { label: 'Accuracy', val: `${Math.round(quizScore / quizQuestions.length * 100)}%` },
+                        { label: 'Correct', val: quizScore },
+                      ].map(({ label, val }) => (
+                        <div key={label} className="p-3 rounded-xl" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+                          <div className="text-xl font-bold mb-0.5" style={{ color: 'var(--accent)' }}>{val}</div>
+                          <div className="text-[10px] uppercase tracking-widest" style={{ color: 'var(--text3)' }}>{label}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <button className="btn btn-accent w-full justify-center py-2.5" onClick={() => setShowQuiz(false)}>
+                      Back to Reading
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Analytics */}
+        <Anytics numPages={numPages} calculateFocusScore={calculateFocusScore} formatTime={formatTime}
+          distractionCount={distractionCount} showAnalytics={showAnalytics} pagesRead={pagesRead}
+          setShowAnalytics={setShowAnalytics} timeSpent={timeSpent} />
+      </div>
+    </>
+  );
+}
