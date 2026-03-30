@@ -30,7 +30,7 @@ apiClient.interceptors.response.use(
       // Redirect to login
      // window.location.href = "/login";
         const redirectUrl = encodeURIComponent(window.location.href);
-     window.location.href = `/auth/redirect/init/?redirectUrl=${redirectUrl}`;
+   //  window.location.href = `/auth/redirect/init/?redirectUrl=${redirectUrl}`;
      
     }
 
