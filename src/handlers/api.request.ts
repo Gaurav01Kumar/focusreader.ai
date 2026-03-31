@@ -1,5 +1,6 @@
 // services/apiRequest.ts
-import axios, { AxiosError,type AxiosInstance } from "axios";
+import { useAuth } from "@clerk/clerk-react";
+import axios, { AxiosError, type AxiosInstance } from "axios";
 
 type APIError = {
   status: number;
@@ -12,33 +13,34 @@ interface RequestOptions {
   params?: Record<string, string | number>;
 }
 
-// ✅ Global Axios instance with credentials and optional baseURL
+// Axios instance
 const apiClient: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "", // optional
+  baseURL: import.meta.env.VITE_API_BASE_URL || "",
   withCredentials: true,
 });
 
-// ✅ Global 401 handler
+// 🔥 Set token function
+export const setAuthToken = () => {
+   const { getToken } = useAuth()
+  if (getToken) {
+    apiClient.defaults.headers.common["Authorization"] = `Bearer ${getToken}`;
+  } else {
+    delete apiClient.defaults.headers.common["Authorization"];
+  }
+};
+
+// 401 handler
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
-      // Optional: clear storage if needed
-      // localStorage.clear();
-      // sessionStorage.clear();
-
-      // Redirect to login
-     // window.location.href = "/login";
-        const redirectUrl = encodeURIComponent(window.location.href);
-   //  window.location.href = `/auth/redirect/init/?redirectUrl=${redirectUrl}`;
-     
+      console.log("Unauthorized request");
     }
-
     return Promise.reject(error);
   }
 );
 
-// ✅ Error handler function
+// Error handler
 const handleApiError = (error: unknown): APIError => {
   if (axios.isAxiosError(error)) {
     const data = error.response?.data as any;
@@ -57,14 +59,11 @@ const handleApiError = (error: unknown): APIError => {
   };
 };
 
-// ✅ Main exported request object
+// API methods
 export const apiRequest = {
   get: async <T>(url: string, options?: RequestOptions): Promise<T> => {
     try {
-      const res = await apiClient.get<T>(url, {
-        headers: options?.headers,
-        params: options?.params,
-      });
+      const res = await apiClient.get<T>(url, options);
       return res.data;
     } catch (error) {
       throw handleApiError(error);
@@ -77,10 +76,7 @@ export const apiRequest = {
     options?: RequestOptions
   ): Promise<T> => {
     try {
-      const res = await apiClient.post<T>(url, body, {
-        headers: options?.headers,
-        params: options?.params,
-      });
+      const res = await apiClient.post<T>(url, body, options);
       return res.data;
     } catch (error) {
       throw handleApiError(error);
@@ -93,10 +89,7 @@ export const apiRequest = {
     options?: RequestOptions
   ): Promise<T> => {
     try {
-      const res = await apiClient.put<T>(url, body, {
-        headers: options?.headers,
-        params: options?.params,
-      });
+      const res = await apiClient.put<T>(url, body, options);
       return res.data;
     } catch (error) {
       throw handleApiError(error);
@@ -105,10 +98,7 @@ export const apiRequest = {
 
   delete: async <T>(url: string, options?: RequestOptions): Promise<T> => {
     try {
-      const res = await apiClient.delete<T>(url, {
-        headers: options?.headers,
-        params: options?.params,
-      });
+      const res = await apiClient.delete<T>(url, options);
       return res.data;
     } catch (error) {
       throw handleApiError(error);
