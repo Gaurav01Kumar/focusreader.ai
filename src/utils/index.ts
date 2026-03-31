@@ -1,1 +1,1 @@
-export const getBaseDomain=()=>'https://focus-reader-backend.vercel.app/api/'
+export const getBaseDomain=()=>'https://focus-reader-backend.onrender.com/api/'

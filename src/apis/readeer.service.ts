@@ -20,12 +20,7 @@ export class ReaderApi {
 
     public async getRecentFileId(id: string) {
         try {
-            const { getToken } = useAuth();
-            const response = await apiRequest.get(getBaseDomain() + "recent/" + id, {
-                headers: {
-                    Authorization: `Bearer ${getToken}`,
-                },
-            });
+            const response = await apiRequest.get(getBaseDomain() + "recent/" + id);
             return response;
         } catch (error) {
             return error;
@@ -33,12 +28,7 @@ export class ReaderApi {
     }
     public async saveNote(payload: any) {
         try {
-            const { getToken } = useAuth();
-            const response = await apiRequest.post(getBaseDomain() + "notes", payload, {
-                headers: {
-                    Authorization: `Bearer ${getToken}`,
-                },
-            });
+            const response = await apiRequest.post(getBaseDomain() + "notes", payload);
             return response;
         } catch (error) {
             return error;
@@ -46,26 +36,15 @@ export class ReaderApi {
     }
     public async getNotesByPdfId(id: string) {
         try {
-            const { getToken } = useAuth();
-            const response = await apiRequest.get(getBaseDomain() + "notes/by-pdf-id?fileId=" + id, {
-                headers: {
-                    Authorization: `Bearer ${getToken}`,
-                },
-            });
+            const response = await apiRequest.get(getBaseDomain() + "notes/by-pdf-id?fileId=" + id);
             return response;
-
         } catch (error) {
             return error;
         }
     }
     public async deleteNote(id: string) {
         try {
-            const { getToken } = useAuth();
-            const response = await apiRequest.delete(getBaseDomain() + "notes/" + id, {
-                headers: {
-                    Authorization: `Bearer ${getToken}`,
-                },
-            });
+            const response = await apiRequest.delete(getBaseDomain() + "notes/" + id);
             return response;
         } catch (error) {
             return error;

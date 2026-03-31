@@ -25,12 +25,8 @@ export class DashboardApi {
 
     public async handleOpenNewFile(payload: any) {
     try {
-         const { getToken } = useAuth();
-        const response = await apiRequest.post(getBaseDomain() + "recent", payload,{
-            headers: {
-                Authorization: `Bearer ${getToken}`,
-            },
-        });
+         
+        const response = await apiRequest.post(getBaseDomain() + "recent", payload);
         return response;
     } catch (error) {
         return error;
@@ -38,12 +34,8 @@ export class DashboardApi {
 }
     public async getRecentFiles() {
     try {
-        const { getToken } = useAuth();
-        const response = await apiRequest.get(getBaseDomain() + "recent",{
-            headers: {
-                Authorization: `Bearer ${getToken}`,
-            },
-        });
+        
+        const response = await apiRequest.get(getBaseDomain() + "recent");
         return response;
     } catch (error) {
         return error
@@ -51,12 +43,8 @@ export class DashboardApi {
 }
     public async deleteRecentFile(id: string) {
     try {
-        const { getToken } = useAuth();
-        const response = await apiRequest.delete(getBaseDomain() + "recent/" + id,{
-            headers: {
-                Authorization: `Bearer ${getToken}`,
-            },
-        });
+        
+        const response = await apiRequest.delete(getBaseDomain() + "recent/" + id);
         return response;
     } catch (error) {
         return error;
@@ -64,12 +52,8 @@ export class DashboardApi {
 }
     public async createFolder(payload: any) {
     try {
-        const { getToken } = useAuth();
-        const response = await apiRequest.post(getBaseDomain() + "folders", payload,{
-            headers: {
-                Authorization: `Bearer ${getToken}`,
-            },
-        });
+        
+        const response = await apiRequest.post(getBaseDomain() + "folders", payload);
         return response;
     } catch (error) {
         return error;
@@ -78,12 +62,8 @@ export class DashboardApi {
     
     public async getFolders() {
     try {
-        const { getToken } = useAuth();
-        const response = await apiRequest.get(getBaseDomain() + "folders",{
-            headers: {
-                Authorization: `Bearer ${getToken}`,
-            },
-        });
+        
+        const response = await apiRequest.get(getBaseDomain() + "folders");
         return response;
     } catch (error) {
         return error;
@@ -91,12 +71,8 @@ export class DashboardApi {
 }
     public async deleteFolder(id: string) {
     try {
-        const { getToken } = useAuth();
-        const response = await apiRequest.delete(getBaseDomain() + "folders/" + id,{
-            headers: {
-                Authorization: `Bearer ${getToken}`,
-            },
-        });
+        
+        const response = await apiRequest.delete(getBaseDomain() + "folders/" + id);
         return response;
     } catch (error) {
         return error;
