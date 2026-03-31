@@ -39,7 +39,7 @@ export class DashboardApi {
     public async getRecentFiles() {
     try {
         const { getToken } = useAuth();
-        const response = await apiRequest.get(getBaseDomain() + "recent"{
+        const response = await apiRequest.get(getBaseDomain() + "recent",{
             headers: {
                 Authorization: `Bearer ${getToken}`,
             },
@@ -79,7 +79,7 @@ export class DashboardApi {
     public async getFolders() {
     try {
         const { getToken } = useAuth();
-        const response = await apiRequest.get(getBaseDomain() + "folders"{
+        const response = await apiRequest.get(getBaseDomain() + "folders",{
             headers: {
                 Authorization: `Bearer ${getToken}`,
             },
