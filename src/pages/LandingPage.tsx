@@ -73,7 +73,7 @@ export default function LandingPage() {
   // ✅ All "Start free" buttons go directly to /dashboard
   // Dashboard should handle auth gating — if not logged in, show login prompt there
   function handleStart() {
-    navigate('/dashboard');
+  handleGoogleLogin();
   }
 
   function handleGoogleLogin() {
