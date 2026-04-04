@@ -257,7 +257,7 @@ const navigate=useNavigate();
                     className="btn-outline"
                     style={{ padding: '8px 18px', fontSize: 13 }}
                     onClick={() => {
-                      window.location.href = "https://focusreader-ai.onrender.com/auth/google";
+                      window.location.href = "https://focus-reader-backend.onrender.com/auth/google";
                     }}
                   >
                     Sign in with Google
