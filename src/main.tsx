@@ -3,18 +3,21 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App.tsx';
 import './index.css';
-import { ClerkProvider } from '@clerk/clerk-react';
-import { ToastContainer } from "react-toastify";
+import { Provider } from 'react-redux';
 
-const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+import { ToastContainer } from "react-toastify";
+import { store } from './redux/store.ts';
+
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ClerkProvider publishableKey={clerkPubKey}>
-      <BrowserRouter>
-        <ToastContainer />
+
+    <BrowserRouter>
+      <ToastContainer />
+      <Provider store={store}>
         <App />
-      </BrowserRouter>
-    </ClerkProvider>
+      </Provider>
+    </BrowserRouter>
+
   </StrictMode>
 );

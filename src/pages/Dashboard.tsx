@@ -3,15 +3,18 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Folder, FolderPlus, Plus, Search, Trash2,
   StickyNote, Edit2, Check, X, Globe, Upload, ChevronRight,
-  BookOpen, LogOut, Clock, Link2, MoreVertical, FolderOpen
+  BookOpen, LogOut, Clock, Link2, MoreVertical, FolderOpen, User
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { SignedIn, SignOutButton, UserButton, useUser } from '@clerk/clerk-react';
+
 import { showToast } from '../utils/toast';
 import { DashboardApi } from '../apis/dashboard.api';
 import { set, get } from 'idb-keyval';
 import { useNavigate } from 'react-router-dom';
+import { useSelector } from 'react-redux';
+import { RootState } from '../redux/store';
+import { AuthApiService } from '../apis/auth.service';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Note {
@@ -37,7 +40,7 @@ const NOTE_COLORS = [
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const { user } = useUser();
+  const user=useSelector((state:RootState)=>state.auth.userData)
   const firstName = user?.firstName ?? user?.fullName?.split(' ')[0] ?? 'there';
   const navigate = useNavigate();
 
@@ -204,6 +207,16 @@ export default function Dashboard() {
   }
   useEffect(() => { loadFolders(); }, []);
 
+  const handleLogout = async () => {
+    try {
+      await AuthApiService.getInstance().logout();
+      window.location.href = "/";
+    } catch {
+      showToast('Logout failed', 'error');
+    }
+  };
+
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
@@ -284,15 +297,14 @@ export default function Dashboard() {
               <span className="text-xs" style={{ color: 'var(--text2)' }}>{notes.length} notes</span>
             </div>
             <div className="w-px h-4 mx-1" style={{ background: 'var(--border2)' }} />
-            <UserButton />
-            <SignedIn>
-              <SignOutButton>
-                <button className="btn-ghost flex items-center gap-1.5 px-2.5 py-1.5 text-xs">
-                  <LogOut size={12} />
-                  <span className="hidden sm:inline">Sign out</span>
-                </button>
-              </SignOutButton>
-            </SignedIn>
+            <button onClick={() => navigate('/profile')} className="btn-ghost flex items-center gap-1.5 px-2.5 py-1.5 text-xs">
+              <User size={12} />
+              <span className="hidden sm:inline">Profile</span>
+            </button>
+            <button onClick={handleLogout} className="btn-ghost flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-red-400 hover:text-red-300">
+              <LogOut size={12} />
+              <span className="hidden sm:inline">Sign out</span>
+            </button>
           </div>
         </header>
 

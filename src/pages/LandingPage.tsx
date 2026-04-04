@@ -6,15 +6,16 @@ import {
   CheckCircle2, ChevronDown, Menu, X, Globe, FileText, GraduationCap,
   TrendingUp, Clock, Eye, Layers
 } from 'lucide-react';
-import { GoogleOneTap, SignedIn, SignedOut, SignInButton } from '@clerk/clerk-react';
-import { Link } from 'react-router-dom';
+
+import { Link, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
+import { useSelector } from 'react-redux';
 
 // ── SEO Meta ─────────────────────────────────────────────────────────────────
 const SEO_TITLE = 'FocusReader AI — Distraction-Free PDF Reading with AI Insights';
-const SEO_DESC  = 'Read PDFs deeper and faster with FocusReader AI. Instant AI explanations, smart notes, focus mode, quizzes, text-to-speech and reading analytics — all in one beautiful reader.';
-const SEO_URL   = 'https://focusreader.ai';
-const SEO_IMG   = 'https://focusreader.ai/og-image.png';
+const SEO_DESC = 'Read PDFs deeper and faster with FocusReader AI. Instant AI explanations, smart notes, focus mode, quizzes, text-to-speech and reading analytics — all in one beautiful reader.';
+const SEO_URL = 'https://focusreader.ai';
+const SEO_IMG = 'https://focusreader.ai/og-image.png';
 
 // ── Feature data ──────────────────────────────────────────────────────────────
 const FEATURES = [
@@ -109,16 +110,19 @@ function FadeIn({ children, delay = 0, className = '' }: { children: React.React
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-export default function LandingPage({ onStart }: { onStart: () => void }) {
+export default function LandingPage() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-
+  const user = useSelector((state: any) => state.auth.userData);
+const navigate=useNavigate();
   useEffect(() => {
     const h = () => setScrolled(window.scrollY > 24);
     window.addEventListener('scroll', h, { passive: true });
     return () => window.removeEventListener('scroll', h);
   }, []);
-
+  function onStart(){
+    navigate('/dashboard')
+  }
   return (
     <>
       {/* ── SEO ──────────────────────────────────────────────────────────── */}
@@ -239,20 +243,35 @@ export default function LandingPage({ onStart }: { onStart: () => void }) {
 
             {/* CTA */}
             <div className="hidden md:flex items-center gap-2">
-              <SignedIn>
-                <Link to="/dashboard" className="btn-primary" style={{ padding: '8px 18px', fontSize: 13 }}>
+              {user ? (
+                <Link
+                  to="/dashboard"
+                  className="btn-primary"
+                  style={{ padding: '8px 18px', fontSize: 13 }}
+                >
                   Dashboard <ArrowRight size={13} />
                 </Link>
-              </SignedIn>
-              <SignedOut>
-                <GoogleOneTap />
-                <SignInButton mode="modal">
-                  <button className="btn-outline" style={{ padding: '8px 18px', fontSize: 13 }}>Sign in</button>
-                </SignInButton>
-                <button className="btn-primary" style={{ padding: '8px 18px', fontSize: 13 }} onClick={onStart}>
-                  Start free <ArrowRight size={13} />
-                </button>
-              </SignedOut>
+              ) : (
+                <>
+                  <button
+                    className="btn-outline"
+                    style={{ padding: '8px 18px', fontSize: 13 }}
+                    onClick={() => {
+                      window.location.href = "http://localhost:5000/auth/google";
+                    }}
+                  >
+                    Sign in with Google
+                  </button>
+
+                  <button
+                    className="btn-primary"
+                    style={{ padding: '8px 18px', fontSize: 13 }}
+                    onClick={onStart}
+                  >
+                    Start free <ArrowRight size={13} />
+                  </button>
+                </>
+              )}
             </div>
 
             {/* Mobile toggle */}
@@ -416,7 +435,7 @@ export default function LandingPage({ onStart }: { onStart: () => void }) {
                       <div className="w-24 h-2.5 rounded-full" style={{ background: 'var(--border2)' }} />
                     </div>
                     <div className="flex gap-1.5">
-                      {['#E8C77A','#60A5FA','#4ADE80'].map(c => (
+                      {['#E8C77A', '#60A5FA', '#4ADE80'].map(c => (
                         <div key={c} className="w-5 h-5 rounded-md" style={{ background: `${c}20` }} />
                       ))}
                     </div>
@@ -435,12 +454,12 @@ export default function LandingPage({ onStart }: { onStart: () => void }) {
                     {/* Content */}
                     <div className="flex-1 p-5 space-y-2.5">
                       <div className="w-3/4 h-2.5 rounded-full" style={{ background: 'var(--border2)' }} />
-                      {[1,0.9,1,0.7,1,0.85,1,0.6].map((w, i) => (
+                      {[1, 0.9, 1, 0.7, 1, 0.85, 1, 0.6].map((w, i) => (
                         <div key={i} className="h-2 rounded-full" style={{ background: 'var(--border)', width: `${w * 100}%` }} />
                       ))}
                       {/* Highlight */}
                       <div className="h-2 rounded-full w-3/5" style={{ background: 'rgba(232,199,122,0.25)' }} />
-                      {[0.8,1,0.65].map((w, i) => (
+                      {[0.8, 1, 0.65].map((w, i) => (
                         <div key={i} className="h-2 rounded-full" style={{ background: 'var(--border)', width: `${w * 100}%` }} />
                       ))}
                       {/* AI bubble */}
@@ -504,14 +523,7 @@ export default function LandingPage({ onStart }: { onStart: () => void }) {
                 <button className="btn-primary justify-center" onClick={onStart}>
                   Open a PDF now <ArrowRight size={15} />
                 </button>
-                <SignedOut>
-                  <SignInButton mode="modal">
-                    <button className="btn-outline justify-center">Create free account</button>
-                  </SignInButton>
-                </SignedOut>
-                <SignedIn>
-                  <Link to="/dashboard" className="btn-outline justify-center">Go to Dashboard</Link>
-                </SignedIn>
+              
               </div>
             </div>
           </FadeIn>

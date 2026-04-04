@@ -16,7 +16,7 @@ import { Note, Folder as FolderType } from '../types';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { getBaseDomain } from '../utils';
-import { useAuth } from '@clerk/clerk-react';
+
 import { useNavigate, useParams } from 'react-router-dom';
 import { showToast } from '../utils/toast';
 import { ReaderApi } from '../apis/readeer.service';
@@ -58,7 +58,7 @@ type LeftTab = 'outline' | 'search' | 'notes';
 export default function Reader() {
   const { pdfId } = useParams();
   const navigate = useNavigate();
-  const { getToken } = useAuth();
+  
 
   // PDF state
   const [file, setFile] = useState<File | string | null>(null);
@@ -199,11 +199,12 @@ export default function Reader() {
     setChatHistory(prev => [...prev, { role: 'ai', content: '' }]);
     const aiIdx = chatHistory.length;
     try {
-      const token = await getToken({ template: 'server' });
+     
       const response = await fetch(`${getBaseDomain()}model/ai-tutor`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_input: selectedText, type }),
+        credentials:"include",
       });
       if (!response.ok || !response.body) throw new Error();
       const reader = response.body.getReader();
@@ -247,10 +248,11 @@ export default function Reader() {
     setChatHistory(prev => [...prev, { role: 'user', content: msg }, { role: 'ai', content: '' }]);
     const aiIdx = chatHistory.length + 1;
     try {
-      const token = await getToken({ template: 'server' });
+      
       const response = await fetch(`${getBaseDomain()}model/ai-tutor`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
+        credentials:"include",
         body: JSON.stringify({ user_input: msg, type: 'chat', context: selectedText, history: chatHistory }),
       });
       if (!response.ok || !response.body) throw new Error();
