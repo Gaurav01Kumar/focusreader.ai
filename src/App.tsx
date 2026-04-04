@@ -4,20 +4,21 @@ import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
 import Reader from './pages/Reader';
 
-import { WifiOff, X } from 'lucide-react';
+import { LucideRoute, WifiOff, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster } from 'react-hot-toast';
 import { Profile } from './pages/Profile';
 import { AuthLayout } from './layout/AuthLayout';
+import FileAnalytics from './pages/Anlytics';
 
 export default function App() {
-  
+
 
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [showOfflineBanner, setShowOfflineBanner] = useState(false);
   const navigate = useNavigate();
-  
+
 
   useEffect(() => {
     const handleOnline = () => {
@@ -40,9 +41,9 @@ export default function App() {
 
 
 
- 
 
- 
+
+
   return (
     <div className="min-h-screen">
       <Toaster />
@@ -86,8 +87,15 @@ export default function App() {
         <Route path="/reader/:pdfId" element={
           <AuthLayout>
             <Reader />
-            </AuthLayout>
+          </AuthLayout>
         } />
+        <Route path="/insights/:pdfId"
+          element={
+            <AuthLayout>
+              <FileAnalytics />
+            </AuthLayout>
+          } 
+          />
 
       </Routes>
     </div>

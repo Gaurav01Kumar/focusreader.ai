@@ -15,6 +15,7 @@ import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { RootState } from '../redux/store';
 import { AuthApiService } from '../apis/auth.service';
+import PdfCard from '../components/PdfCard';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Note {
@@ -40,7 +41,7 @@ const NOTE_COLORS = [
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const user=useSelector((state:RootState)=>state.auth.userData)
+  const user = useSelector((state: RootState) => state.auth.userData)
   const firstName = user?.firstName ?? user?.fullName?.split(' ')[0] ?? 'there';
   const navigate = useNavigate();
 
@@ -178,7 +179,7 @@ export default function Dashboard() {
       showToast('Failed to create folder', 'error');
     }
   };
-  const handleDeleteFolder =async (id: string) => {
+  const handleDeleteFolder = async (id: string) => {
     try {
       const response = await DashboardApi.getInstance().deleteFolder(id);
       if (response.statusCode === 200) {
@@ -531,50 +532,17 @@ export default function Dashboard() {
                           <span className="text-[10px] font-semibold uppercase tracking-widest hidden sm:block" style={{ color: 'var(--text3)' }}>Size</span>
                           <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text3)' }}>Date</span>
                         </div>
-
-                        {recentFiles.map((file, i) => (
-                          <motion.div key={file._id}
-                            initial={{ opacity: 0, x: -8 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: i * 0.03 }}
-                            className="group grid grid-cols-[auto_1fr_auto_auto] items-center gap-3 px-4 py-3 cursor-pointer border-b last:border-b-0 transition-colors"
-                            style={{ borderColor: 'var(--border)' }}
-                            onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface2)')}
-                            onMouseLeave={e => (e.currentTarget.style.background = '')}
-                            onClick={() => handleOpenRecent(file)}
-                          >
-                            <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
-                              style={{ background: 'var(--surface2)', border: '1px solid var(--border2)' }}>
-                              {file.isUrl
-                                ? <Globe size={13} style={{ color: 'var(--accent)' }} />
-                                : <FileText size={13} style={{ color: 'var(--accent)' }} />}
-                            </div>
-
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>{file.name}</p>
-                              {file.isUrl && (
-                                <p className="text-[10px] truncate" style={{ color: 'var(--text3)' }}>{file.file_path}</p>
-                              )}
-                            </div>
-
-                            <span className="text-xs hidden sm:block" style={{ color: 'var(--text3)' }}>
-                              {file.isUrl ? '—' : `${(file.size / 1024).toFixed(0)} KB`}
-                            </span>
-
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs" style={{ color: 'var(--text3)' }}>
-                                {new Date(file.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                              </span>
-                              <button
-                                onClick={e => { e.stopPropagation(); handleDeleteRecent(file._id); }}
-                                className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                                style={{ color: 'var(--danger)' }}
-                              >
-                                <Trash2 size={12} />
-                              </button>
-                            </div>
-                          </motion.div>
-                        ))}
+                        {recentFiles.map((file, i) => {
+                          return (
+                            <PdfCard
+                              key={i}
+                              file={file}
+                              
+                              handleDeleteRecent={handleDeleteRecent}
+                              handleOpenRecent={handleOpenRecent}
+                            />
+                          );
+                        })}
                       </div>
                     )}
                   </motion.div>
@@ -726,8 +694,8 @@ export default function Dashboard() {
               </AnimatePresence>
             </div>
           </main>
-        </div>
-      </div>
+        </div >
+      </div >
     </>
   );
 }

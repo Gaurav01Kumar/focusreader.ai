@@ -22,6 +22,7 @@ import { showToast } from '../utils/toast';
 import { ReaderApi } from '../apis/readeer.service';
 import Anytics from '../components/Anytics';
 import { DashboardApi } from '../apis/dashboard.api';
+import QuizModel from '../components/QuizModel';
 
 function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
 
@@ -58,9 +59,9 @@ type LeftTab = 'outline' | 'search' | 'notes';
 export default function Reader() {
   const { pdfId } = useParams();
   const navigate = useNavigate();
-  
 
   // PDF state
+  const [restoredPage, setRestoredPage] = useState<number>(1);
   const [file, setFile] = useState<File | string | null>(null);
   const [fileName, setFileName] = useState('');
   const [numPages, setNumPages] = useState<number | null>(null);
@@ -136,12 +137,13 @@ export default function Reader() {
     try {
       const r = await ReaderApi.getInstance().getRecentFileId(pdfId as string);
       if (r.statusCode === 200) {
-        const { file_path, isUrl, fileId, name } = r.data;
+        const { file_path, isUrl, fileId, name, lastPage } = r.data; // ← read lastPage
         setFileName(name);
+        setRestoredPage(lastPage || 1); // ← store it, scroll after PDF loads
         if (isUrl) setFile(file_path);
         else await reopenFile(fileId);
-      } else showToast('Failed to load PDF.', 'error');
-    } catch { showToast('Failed to load PDF.', 'error'); }
+      }
+    } catch { }
   }
 
   useEffect(() => { if (pdfId) fetchPdfAndData(); }, [pdfId]);
@@ -155,11 +157,17 @@ export default function Reader() {
   useEffect(() => { setLoadError(null); setNumPages(null); setPageNumber(1); }, [file]);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatHistory]);
 
+  // onDocumentLoadSuccess already fires when PDF is ready
   async function onDocumentLoadSuccess(pdf: any) {
-    setNumPages(pdf.numPages); setPdfDoc(pdf);
+    setNumPages(pdf.numPages);
+    setPdfDoc(pdf);
     try { setPdfOutline((await pdf.getOutline()) || []); } catch { }
-  }
 
+    // ← add this: small timeout lets pages render into DOM first
+    setTimeout(() => {
+      if (restoredPage > 1) scrollToPage(restoredPage);
+    }, 300);
+  }
   // ── Search ─────────────────────────────────────────────────────────────────
   const handlePdfSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -180,37 +188,68 @@ export default function Reader() {
   };
 
   // ── Text selection ─────────────────────────────────────────────────────────
+  // FIX 1: Use viewport-relative coords directly from getBoundingClientRect
+  // and clear selection coords properly so bubble doesn't ghost
   const handleTextSelection = () => {
     const sel = window.getSelection();
     const text = sel?.toString().trim();
     if (text && text.length > 3) {
       setSelectedText(text);
       const rect = sel?.getRangeAt(0).getBoundingClientRect();
-      if (rect) setSelectionCoords({ x: rect.left + rect.width / 2, y: rect.top - 10 });
-    } else if (!aiExplanation && !isAiLoading) {
-      setSelectedText(''); setSelectionCoords(null);
+      if (rect) {
+        setSelectionCoords({
+          x: rect.left + rect.width / 2,
+          y: rect.top,                    // store raw top; offset is applied in render
+        });
+      }
+      setAiExplanation(null); // clear previous explanation when new text selected
+    } else if (!isAiLoading) {
+      setSelectedText('');
+      setSelectionCoords(null);
     }
   };
 
   // ── AI ─────────────────────────────────────────────────────────────────────
+  // FIX 2: Push user message into chat BEFORE streaming AI response
+  // FIX 3: Remove auto-save so user can pick folder first, then manually save
   const handleAskAI = async (type: 'explain' | 'summarize' | 'examples' = 'explain') => {
-    if (!isOnline) return;
-    setRightOpen(true); setIsAiLoading(true);
-    setChatHistory(prev => [...prev, { role: 'ai', content: '' }]);
-    const aiIdx = chatHistory.length;
+    if (!isOnline || !selectedText) return;
+    setRightOpen(true);
+    setIsAiLoading(true);
+    setSelectionCoords(null); // hide bubble immediately
+
+    // Build a readable user message
+    const truncated = selectedText.length > 120
+      ? selectedText.slice(0, 120) + '…'
+      : selectedText;
+    const labelMap = {
+      explain: `Explain: "${truncated}"`,
+      summarize: `Summarize: "${truncated}"`,
+      examples: `Give examples for: "${truncated}"`,
+    };
+    const userMessage = labelMap[type];
+
+    // Push user + empty AI placeholder together
+    setChatHistory(prev => [
+      ...prev,
+      { role: 'user', content: userMessage },
+      { role: 'ai', content: '' },
+    ]);
+
+    let aiText = '';
+
     try {
-     
       const response = await fetch(`${getBaseDomain()}model/ai-tutor`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_input: selectedText, type }),
-        credentials:"include",
+        credentials: 'include',
       });
       if (!response.ok || !response.body) throw new Error();
       const reader = response.body.getReader();
       readerRef.current = reader;
       const decoder = new TextDecoder();
-      let text = '';
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -226,39 +265,62 @@ export default function Reader() {
           try {
             const p = JSON.parse(data);
             if (p?.content) {
-              text += p.content;
-              const snap = text;
-              setChatHistory(prev => { const u = [...prev]; if (u[aiIdx]) u[aiIdx] = { ...u[aiIdx], content: snap }; return u; });
+              aiText += p.content;
+              const snap = aiText;
+              // Always update the last item (the AI placeholder we appended)
+              setChatHistory(prev => {
+                const u = [...prev];
+                u[u.length - 1] = { ...u[u.length - 1], content: snap };
+                return u;
+              });
             }
           } catch { }
         }
       }
-      setAiExplanation(text);
-      if (text && selectedText) {
-        saveToNotes();
-      }
-    } catch { showToast('AI request failed', 'error'); }
-    finally { setIsAiLoading(false); }
+
+      setAiExplanation(aiText);
+      // ✅ No auto-save here — let the user select folder then click "Save to Notes"
+
+    } catch {
+      showToast('AI request failed', 'error');
+      setChatHistory(prev => {
+        const u = [...prev];
+        u[u.length - 1] = { ...u[u.length - 1], content: 'Error — please try again.' };
+        return u;
+      });
+    } finally {
+      setIsAiLoading(false);
+      readerRef.current = null;
+    }
   };
 
   const handleFollowUp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim() || isAiLoading || !isOnline) return;
-    const msg = chatInput.trim(); setChatInput(''); setIsAiLoading(true);
-    setChatHistory(prev => [...prev, { role: 'user', content: msg }, { role: 'ai', content: '' }]);
-    const aiIdx = chatHistory.length + 1;
+    const msg = chatInput.trim();
+    setChatInput('');
+    setIsAiLoading(true);
+
+    // Push user + empty AI placeholder
+    setChatHistory(prev => [
+      ...prev,
+      { role: 'user', content: msg },
+      { role: 'ai', content: '' },
+    ]);
+
+    let aiText = '';
+
     try {
-      
       const response = await fetch(`${getBaseDomain()}model/ai-tutor`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials:"include",
+        credentials: 'include',
         body: JSON.stringify({ user_input: msg, type: 'chat', context: selectedText, history: chatHistory }),
       });
       if (!response.ok || !response.body) throw new Error();
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      let text = '';
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -269,21 +331,50 @@ export default function Reader() {
           const line = bufferRef.current.slice(0, le).trim();
           bufferRef.current = bufferRef.current.slice(le + 1);
           if (!line.startsWith('data: ')) continue;
-          const data = line.slice(6); if (data === '[DONE]') break;
-          try { const p = JSON.parse(data); if (p?.content) { text += p.content; setChatHistory(prev => { const u = [...prev]; if (u[aiIdx]) u[aiIdx] = { ...u[aiIdx], content: text }; return u; }); } } catch { }
+          const data = line.slice(6);
+          if (data === '[DONE]') break;
+          try {
+            const p = JSON.parse(data);
+            if (p?.content) {
+              aiText += p.content;
+              const snap = aiText;
+              setChatHistory(prev => {
+                const u = [...prev];
+                u[u.length - 1] = { ...u[u.length - 1], content: snap };
+                return u;
+              });
+            }
+          } catch { }
         }
       }
-    } catch { setChatHistory(prev => { const u = [...prev]; if (u[aiIdx]) u[aiIdx] = { ...u[aiIdx], content: 'Error processing request.' }; return u; }); }
-    finally { setIsAiLoading(false); readerRef.current = null; }
+    } catch {
+      setChatHistory(prev => {
+        const u = [...prev];
+        u[u.length - 1] = { ...u[u.length - 1], content: 'Error processing request.' };
+        return u;
+      });
+    } finally {
+      setIsAiLoading(false);
+      readerRef.current = null;
+    }
   };
 
   // ── Quiz ───────────────────────────────────────────────────────────────────
   const handleGenerateQuiz = async () => {
     if (!selectedText || !isOnline) return;
     setIsAiLoading(true);
+    setSelectionCoords(null);
     const questions = await generateQuiz(selectedText);
-    if (questions.length > 0) { setQuizQuestions(questions); setCurrentQuizIndex(0); setQuizScore(0); setQuizAnswered(null); setShowQuiz(true); setShowQuizResult(false); }
-    setIsAiLoading(false); setSelectedText('');
+    if (questions.length > 0) {
+      setQuizQuestions(questions);
+      setCurrentQuizIndex(0);
+      setQuizScore(0);
+      setQuizAnswered(null);
+      setShowQuiz(true);
+      setShowQuizResult(false);
+    }
+    setIsAiLoading(false);
+    setSelectedText('');
   };
 
   // ── Misc ───────────────────────────────────────────────────────────────────
@@ -336,60 +427,65 @@ export default function Reader() {
   const calculateFocusScore = () => Math.max(0, Math.min(100, 100 - distractionCount * 5 + Math.min(20, Math.floor(timeSpent / 300) * 5)));
   const formatTime = (s: number) => `${Math.floor(s / 60)}m ${s % 60}s`;
 
+  // FIX 3: saveToNotes now respects selectedFolderId and selectedColor at call time
   const saveToNotes = async () => {
     try {
-      // If no explicit selection, try to get the last user message or AI explanation from chat
       const lastUserMsg = [...chatHistory].reverse().find(m => m.role === 'user')?.content;
       const noteText = selectedText || lastUserMsg || 'Note';
       const noteExplanation = aiExplanation || [...chatHistory].reverse().find(m => m.role === 'ai')?.content;
 
       const response = await ReaderApi.getInstance().saveNote({
-        text: selectedText || noteText,
+        text: noteText,
         explanation: noteExplanation || undefined,
         pageNumber,
-        folderId: selectedFolderId,
-        highlight: selectedColor,
+        folderId: selectedFolderId,       // ✅ uses current selectedFolderId state at save time
+        highlight: selectedColor,          // ✅ uses current selectedColor state at save time
         fileId: pdfId as string,
       });
+
       if (response.statusCode === 201) {
-        setSelectedText(''); setAiExplanation(null); setChatHistory([]); loadNotes();
+        setSelectedText('');
+        setAiExplanation(null);
+        setChatHistory([]);
+        loadNotes();
         showToast('Note saved', 'success');
-
+      } else {
+        showToast('Failed to save note', 'error');
       }
-      else showToast('Failed to save note', 'error');
-
-    } catch (error) {
+    } catch {
       showToast('Failed to save note', 'error');
     }
   };
 
   const LEFT_W = 260;
   const RIGHT_W = 360;
+
   async function loadNotes() {
     try {
       const r = await ReaderApi.getInstance().getNotesByPdfId(pdfId as string);
       if (r.statusCode === 200) setNotes(r.data);
       else showToast('Failed to load notes', 'error');
-    } catch (error) {
+    } catch {
       showToast('Failed to load notes', 'error');
     }
   }
+
   const handleCreateFolder = async () => {
     try {
       const response = await DashboardApi.getInstance().createFolder({ name: newFolderName });
       if (response.statusCode === 201) {
         setNewFolderName('');
         setIsCreatingFolder(false);
-        loadFolders()
+        loadFolders();
         showToast('Folder created', 'success');
-
       } else {
         showToast('Failed to create folder', 'error');
       }
-    } catch (error) {
+    } catch {
       showToast('Failed to create folder', 'error');
     }
   };
+
   async function loadFolders() {
     try {
       const r = await DashboardApi.getInstance().getFolders();
@@ -397,7 +493,8 @@ export default function Reader() {
       else showToast('Failed to load folders', 'error');
     } catch { showToast('Error fetching folders', 'error'); }
   }
-  async function handleDeleteNote(noteId: string) { 
+
+  async function handleDeleteNote(noteId: string) {
     try {
       const response = await ReaderApi.getInstance().deleteNote(noteId);
       if (response.statusCode === 200) {
@@ -406,14 +503,42 @@ export default function Reader() {
       } else {
         showToast('Failed to delete note', 'error');
       }
-  }catch (error) {
-    showToast('Failed to delete note', 'error');
+    } catch {
+      showToast('Failed to delete note', 'error');
+    }
   }
-  }
 
-  useEffect(() => { loadFolders();loadNotes() }, []);
+  useEffect(() => { loadFolders(); loadNotes(); }, []);
+  // Reader file track page 
+  useEffect(() => {
+    const payload = () => JSON.stringify({
+      fileId: pdfId,
+      lastPage: pageNumber,
+      totalPages: numPages,
+      timeSpent,
+      focusScore: calculateFocusScore(),
+      distractionCount,
+      pagesRead: Array.from(pagesRead),
+    });
 
+    const handleUnload = () => {
+      navigator.sendBeacon(`${getBaseDomain()}recent/update-last-read-page`, payload());
+    };
 
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        navigator.sendBeacon(`${getBaseDomain()}recent/update-last-read-page`, payload());
+      }
+    };
+
+    window.addEventListener('beforeunload', handleUnload);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleUnload);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [pageNumber, pdfId, numPages, timeSpent, distractionCount, pagesRead]);
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
@@ -432,11 +557,9 @@ export default function Reader() {
         .sb::-webkit-scrollbar { width: 3px; height: 3px; }
         .sb::-webkit-scrollbar-track { background: transparent; }
         .sb::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
-        /* react-pdf dark mode */
         .pdf-container .react-pdf__Page { background: transparent !important; }
         .pdf-container .react-pdf__Page canvas { border-radius: 4px; box-shadow: 0 2px 16px rgba(0,0,0,0.5); }
         .pdf-page-wrapper { margin-bottom: 12px; }
-        /* text layer */
         .react-pdf__Page__textContent { color: transparent; }
         .react-pdf__Page__textContent ::selection { background: rgba(232,199,122,0.35); }
         .btn { display: inline-flex; align-items: center; gap: 6px; border-radius: 7px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.12s; border: none; font-family: 'Geist', system-ui, sans-serif; }
@@ -543,7 +666,7 @@ export default function Reader() {
           )}
         </AnimatePresence>
 
-        {/* ── Body (below nav) ─────────────────────────────────────────────── */}
+        {/* ── Body ─────────────────────────────────────────────────────────── */}
         <div className="flex flex-1 min-h-0" style={{ paddingTop: isFocusMode ? 0 : 44 }}>
 
           {/* Left panel */}
@@ -671,7 +794,7 @@ export default function Reader() {
             )}
           </AnimatePresence>
 
-          {/* Toggle left panel button when closed */}
+          {/* Toggle left panel when closed */}
           {!isFocusMode && !leftOpen && (
             <div className="flex flex-col items-center pt-2 px-1 border-r shrink-0" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
               <button className="icon-btn" onClick={() => setLeftOpen(true)} title="Open panel">
@@ -747,14 +870,26 @@ export default function Reader() {
               </Document>
             )}
 
-            {/* Selection bubble */}
+            {/* 
+              FIX 1: Selection bubble
+              - Use CSS transform: translateX(-50%) instead of Framer motion x: '-50%'
+              - Offset y upward by 70px so it sits above the selection
+              - Remove conflicting x from motion props
+            */}
             <AnimatePresence>
               {selectedText && !aiExplanation && selectionCoords && (
                 <motion.div
-                  initial={{ opacity: 0, scale: 0.9, y: 10, x: '-50%' }}
-                  animate={{ opacity: 1, scale: 1, y: -8, x: '-50%' }}
-                  exit={{ opacity: 0, scale: 0.9, y: 10, x: '-50%' }}
-                  style={{ position: 'fixed', left: selectionCoords.x, top: selectionCoords.y, zIndex: 200 }}
+                  initial={{ opacity: 0, scale: 0.92 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.92 }}
+                  transition={{ duration: 0.12 }}
+                  style={{
+                    position: 'fixed',
+                    left: selectionCoords.x,
+                    top: selectionCoords.y - 70,
+                    transform: 'translateX(-50%)',
+                    zIndex: 200,
+                  }}
                 >
                   <div className="rounded-xl overflow-hidden shadow-2xl border"
                     style={{ background: 'var(--surface)', borderColor: 'var(--border2)', minWidth: 180 }}>
@@ -802,8 +937,16 @@ export default function Reader() {
                       </>
                     )}
                   </div>
-                  <div className="mx-auto mt-0 w-2 h-2 rotate-45 -mt-1"
-                    style={{ background: 'var(--surface)', border: '1px solid var(--border2)', borderTop: 'none', borderLeft: 'none', width: 8, height: 8, marginLeft: 'calc(50% - 4px)' }} />
+                  {/* Caret */}
+                  <div style={{
+                    width: 8, height: 8,
+                    background: 'var(--surface)',
+                    border: '1px solid var(--border2)',
+                    borderTop: 'none', borderLeft: 'none',
+                    transform: 'rotate(45deg)',
+                    marginLeft: 'calc(50% - 4px)',
+                    marginTop: -5,
+                  }} />
                 </motion.div>
               )}
             </AnimatePresence>
@@ -891,7 +1034,7 @@ export default function Reader() {
                   <div ref={chatEndRef} />
                 </div>
 
-                {/* Selected text */}
+                {/* Selected text preview */}
                 {selectedText && (
                   <div className="shrink-0 mx-3 mb-2 p-2.5 rounded-lg border text-[11px] italic leading-relaxed line-clamp-2"
                     style={{ background: 'var(--surface2)', borderColor: 'var(--border)', color: 'var(--text2)' }}>
@@ -901,19 +1044,27 @@ export default function Reader() {
 
                 {/* Folder + color row */}
                 <div className="shrink-0 px-3 pb-2 flex items-center gap-2 flex-wrap">
-                  <select value={selectedFolderId || ''} onChange={e => setSelectedFolderId(e.target.value || undefined)}
-                    className="input-base text-[10px] px-2 py-1 flex-1 min-w-0">
+                  <select
+                    value={selectedFolderId || ''}
+                    onChange={e => setSelectedFolderId(e.target.value || undefined)}
+                    className="input-base text-[10px] px-2 py-1 flex-1 min-w-0"
+                  >
                     <option value="">General</option>
                     {folders.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}
                   </select>
                   {isCreatingFolder ? (
                     <div className="flex items-center gap-1">
-                      <input autoFocus value={newFolderName} onChange={e => setNewFolderName(e.target.value)}
+                      <input
+                        autoFocus
+                        value={newFolderName}
+                        onChange={e => setNewFolderName(e.target.value)}
                         onKeyDown={e => {
-                          if (e.key === 'Enter') { handleCreateFolder() }
+                          if (e.key === 'Enter') handleCreateFolder();
                           if (e.key === 'Escape') setIsCreatingFolder(false);
                         }}
-                        placeholder="Name…" className="input-base px-2 py-1 text-[10px] w-24" />
+                        placeholder="Name…"
+                        className="input-base px-2 py-1 text-[10px] w-24"
+                      />
                       <button onClick={() => setIsCreatingFolder(false)} className="icon-btn w-6 h-6"><X size={10} /></button>
                     </div>
                   ) : (
@@ -929,7 +1080,7 @@ export default function Reader() {
                   </div>
                 </div>
 
-                {/* Input */}
+                {/* Input row */}
                 <div className="shrink-0 px-3 pb-3">
                   {aiExplanation && (
                     <button onClick={saveToNotes} className="btn btn-dark w-full justify-center py-2 mb-2 text-[11px]">
@@ -938,9 +1089,12 @@ export default function Reader() {
                   )}
                   {isOnline ? (
                     <form onSubmit={handleFollowUp} className="flex gap-2">
-                      <input value={chatInput} onChange={e => setChatInput(e.target.value)}
+                      <input
+                        value={chatInput}
+                        onChange={e => setChatInput(e.target.value)}
                         placeholder="Ask your tutor anything…"
-                        className="input-base flex-1 px-3 py-2 text-xs" />
+                        className="input-base flex-1 px-3 py-2 text-xs"
+                      />
                       <button type="submit" disabled={!chatInput.trim() || isAiLoading}
                         className="btn btn-accent px-2.5 py-2 disabled:opacity-40">
                         <Send size={12} />
@@ -961,96 +1115,33 @@ export default function Reader() {
         {/* ── Quiz Modal ────────────────────────────────────────────────────── */}
         <AnimatePresence>
           {showQuiz && (
-            <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}
-                onClick={() => setShowQuiz(false)} />
-              <motion.div initial={{ opacity: 0, scale: 0.95, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 16 }}
-                className="relative w-full max-w-md rounded-2xl overflow-hidden shadow-2xl"
-                style={{ background: 'var(--surface)', border: '1px solid var(--border2)' }}>
-                {!showQuizResult ? (
-                  <div className="p-6">
-                    <div className="flex items-center justify-between mb-5">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-                          style={{ background: 'rgba(244,114,182,0.12)', color: '#F472B6' }}>
-                          <Brain size={16} />
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Knowledge Check</p>
-                          <p className="text-[10px]" style={{ color: 'var(--text3)' }}>Q{currentQuizIndex + 1} of {quizQuestions.length}</p>
-                        </div>
-                      </div>
-                      <button className="icon-btn" onClick={() => setShowQuiz(false)}><X size={14} /></button>
-                    </div>
-                    <p className="text-sm font-medium mb-4 leading-relaxed" style={{ color: 'var(--text)' }}>
-                      {quizQuestions[currentQuizIndex].question}
-                    </p>
-                    <div className="space-y-2 mb-4">
-                      {quizQuestions[currentQuizIndex].options.map((opt: string, i: number) => {
-                        const correct = i === quizQuestions[currentQuizIndex].correctAnswer;
-                        const selected = quizAnswered === i;
-                        return (
-                          <button key={i} onClick={() => { if (quizAnswered !== null) return; setQuizAnswered(i); if (correct) setQuizScore(p => p + 1); }}
-                            className="w-full text-left px-3.5 py-2.5 rounded-xl text-sm font-medium flex items-center justify-between transition-all"
-                            style={{
-                              background: quizAnswered === null ? 'var(--surface2)' : correct ? 'rgba(74,222,128,0.1)' : selected ? 'rgba(248,113,113,0.1)' : 'var(--surface2)',
-                              border: `1px solid ${quizAnswered === null ? 'var(--border)' : correct ? 'rgba(74,222,128,0.4)' : selected ? 'rgba(248,113,113,0.4)' : 'var(--border)'}`,
-                              color: quizAnswered === null ? 'var(--text)' : correct ? '#4ADE80' : selected ? 'var(--danger)' : 'var(--text3)',
-                              opacity: quizAnswered !== null && !correct && !selected ? 0.4 : 1,
-                            }}>
-                            {opt}
-                            {quizAnswered !== null && (correct ? <CheckCircle2 size={14} /> : selected ? <XCircle size={14} /> : null)}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {quizAnswered !== null && (
-                      <div className="mb-4 p-3 rounded-xl text-xs leading-relaxed"
-                        style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text2)' }}>
-                        <span className="font-bold" style={{ color: 'var(--text)' }}>Explanation: </span>
-                        {quizQuestions[currentQuizIndex].explanation}
-                      </div>
-                    )}
-                    <button onClick={() => { if (currentQuizIndex < quizQuestions.length - 1) { setCurrentQuizIndex(p => p + 1); setQuizAnswered(null); } else setShowQuizResult(true); }}
-                      disabled={quizAnswered === null}
-                      className="btn btn-accent w-full justify-center py-2.5 text-sm disabled:opacity-30">
-                      {currentQuizIndex === quizQuestions.length - 1 ? 'Finish' : 'Next'}
-                    </button>
-                  </div>
-                ) : (
-                  <div className="p-8 text-center">
-                    <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
-                      style={{ background: 'rgba(232,199,122,0.12)', color: 'var(--accent)' }}>
-                      <Trophy size={28} />
-                    </div>
-                    <h3 className="f-serif text-2xl mb-1" style={{ color: 'var(--text)' }}>Quiz Complete!</h3>
-                    <p className="text-sm mb-5" style={{ color: 'var(--text2)' }}>{quizScore} / {quizQuestions.length} correct</p>
-                    <div className="grid grid-cols-2 gap-3 mb-5">
-                      {[
-                        { label: 'Accuracy', val: `${Math.round(quizScore / quizQuestions.length * 100)}%` },
-                        { label: 'Correct', val: quizScore },
-                      ].map(({ label, val }) => (
-                        <div key={label} className="p-3 rounded-xl" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
-                          <div className="text-xl font-bold mb-0.5" style={{ color: 'var(--accent)' }}>{val}</div>
-                          <div className="text-[10px] uppercase tracking-widest" style={{ color: 'var(--text3)' }}>{label}</div>
-                        </div>
-                      ))}
-                    </div>
-                    <button className="btn btn-accent w-full justify-center py-2.5" onClick={() => setShowQuiz(false)}>
-                      Back to Reading
-                    </button>
-                  </div>
-                )}
-              </motion.div>
-            </div>
+            <QuizModel
+              currentQuizIndex={currentQuizIndex}
+              showQuiz={showQuiz}
+              quizAnswered={quizAnswered}
+              quizQuestions={quizQuestions}
+              quizScore={quizScore}
+              setCurrentQuizIndex={setCurrentQuizIndex}
+              setQuizAnswered={setQuizAnswered}
+              setShowQuiz={setShowQuiz}
+              setQuizScore={setQuizScore}
+              showQuizResult={showQuizResult}
+              setShowQuizResult={setShowQuizResult}
+            />
           )}
         </AnimatePresence>
 
         {/* Analytics */}
-        <Anytics numPages={numPages} calculateFocusScore={calculateFocusScore} formatTime={formatTime}
-          distractionCount={distractionCount} showAnalytics={showAnalytics} pagesRead={pagesRead}
-          setShowAnalytics={setShowAnalytics} timeSpent={timeSpent} />
+        <Anytics
+          numPages={numPages}
+          calculateFocusScore={calculateFocusScore}
+          formatTime={formatTime}
+          distractionCount={distractionCount}
+          showAnalytics={showAnalytics}
+          pagesRead={pagesRead}
+          setShowAnalytics={setShowAnalytics}
+          timeSpent={timeSpent}
+        />
       </div>
     </>
   );
