@@ -165,6 +165,7 @@ export default function Reader() {
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [pdfOutline, setPdfOutline] = useState<any[]>([]);
   const [loadError, setLoadError] = useState<Error | null>(null);
+  const [isOpening, setIsOpening] = useState(false);
 
   // UI state
   const [leftTab, setLeftTab] = useState<LeftTab>("outline");
@@ -256,23 +257,31 @@ export default function Reader() {
 
   // ── Data loading ───────────────────────────────────────────────────────────
   async function reopenFile(fileId: string) {
-    const handle = await get(fileId);
-    if (!handle) {
-      showToast("File not found. Please reselect.", "error");
-      return;
-    }
-    const perm = await handle.queryPermission({ mode: "read" });
-    if (perm !== "granted") {
-      const np = await handle.requestPermission({ mode: "read" });
-      if (np !== "granted") {
-        showToast("Permission denied.", "error");
+    setIsOpening(true);
+    try {
+      const handle = await get(fileId);
+      if (!handle) {
+        showToast("File not found. Please reselect.", "error");
+        setIsOpening(false);
         return;
       }
+      const perm = await handle.queryPermission({ mode: "read" });
+      if (perm !== "granted") {
+        const np = await handle.requestPermission({ mode: "read" });
+        if (np !== "granted") {
+          showToast("Permission denied.", "error");
+          setIsOpening(false);
+          return;
+        }
+      }
+      setFile(await handle.getFile());
+    } catch {
+      setIsOpening(false);
     }
-    setFile(await handle.getFile());
   }
 
   async function fetchPdfAndData() {
+    setIsOpening(true);
     try {
       const r = await ReaderApi.getInstance().getRecentFileId(pdfId as string);
       if (r.statusCode === 200) {
@@ -280,8 +289,6 @@ export default function Reader() {
         setFileName(name);
         setRestoredPage(lastPage || 1);
         if (isUrl) {
-          // Instead of: setFile(file_path)
-          console.log("called");
           try {
             const proxyUrl = `${getBaseDomain()}proxy-pdf?url=${encodeURIComponent(file_path)}`;
             const res = await fetch(proxyUrl);
@@ -290,15 +297,19 @@ export default function Reader() {
             const localFile = new File([blob], name, {
               type: "application/pdf",
             });
-            setFile(localFile); // Now treated as a local file, no CORS issues
+            setFile(localFile);
           } catch {
-            setFile(file_path); // fallback to direct (works if CORS allowed)
+            setFile(file_path);
           }
         } else {
           await reopenFile(fileId);
         }
+      } else {
+        setIsOpening(false);
       }
-    } catch {}
+    } catch {
+      setIsOpening(false);
+    }
   }
 
   useEffect(() => {
@@ -329,12 +340,19 @@ export default function Reader() {
   async function onDocumentLoadSuccess(pdf: any) {
     setNumPages(pdf.numPages);
     setPdfDoc(pdf);
+    setIsOpening(false);
     try {
       setPdfOutline((await pdf.getOutline()) || []);
     } catch {}
     setTimeout(() => {
       if (restoredPage > 1) scrollToPage(restoredPage);
     }, 400);
+  }
+
+  function onDocumentLoadError(error: Error) {
+    setLoadError(error);
+    setIsOpening(false);
+    showToast("Failed to load PDF", "error");
   }
 
   // ── Virtualized page list ──────────────────────────────────────────────────
@@ -794,6 +812,31 @@ export default function Reader() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
+      <AnimatePresence>
+        {isOpening && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex flex-col items-center justify-center pointer-events-none"
+            style={{ background: "rgba(12,12,14,0.8)", backdropFilter: "blur(8px)" }}
+          >
+            <div className="flex flex-col items-center gap-4">
+              <div
+                className="w-10 h-10 rounded-full border-2 border-t-transparent animate-spin"
+                style={{
+                  borderColor: "rgba(232,199,122,0.2)",
+                  borderTopColor: "var(--accent)",
+                }}
+              />
+              <div className="flex flex-col items-center text-center">
+                <p className="f-serif text-lg text-white mb-1">Preparing your reader</p>
+                <p className="text-xs text-[var(--text2)]">Initializing AI and loading document...</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600;700&display=swap');
         :root {
@@ -1357,7 +1400,7 @@ export default function Reader() {
               <Document
                 file={file}
                 onLoadSuccess={onDocumentLoadSuccess}
-                onLoadError={(err) => setLoadError(err)}
+                onLoadError={onDocumentLoadError}
                 loading={
                   <div className="flex flex-col items-center justify-center py-20">
                     <div
