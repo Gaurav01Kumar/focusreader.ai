@@ -1,49 +1,128 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { motion, useInView } from 'motion/react';
+import React, { useEffect, useRef, useState } from "react";
+import { motion, useInView } from "motion/react";
 import {
-  BookOpen, Sparkles, BellOff, ArrowRight, Shield, Zap, Brain,
-  BarChart2, StickyNote, Search, Headphones, FolderOpen,
-  CheckCircle2, ChevronDown, Menu, X, Globe, FileText, GraduationCap,
-  Eye, Layers
-} from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Helmet } from 'react-helmet-async';
-import { useSelector } from 'react-redux';
+  BookOpen,
+  Sparkles,
+  BellOff,
+  ArrowRight,
+  Shield,
+  Zap,
+  Brain,
+  BarChart2,
+  StickyNote,
+  Search,
+  Headphones,
+  FolderOpen,
+  CheckCircle2,
+  ChevronDown,
+  Menu,
+  X,
+  Globe,
+  FileText,
+  GraduationCap,
+  Eye,
+  Layers,
+} from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { Helmet } from "react-helmet-async";
+import { useSelector } from "react-redux";
 
 // ── SEO ───────────────────────────────────────────────────────────────────────
-const SEO_TITLE = 'FocusReader AI — Distraction-Free PDF Reading with AI Insights';
-const SEO_DESC = 'Read PDFs deeper and faster with FocusReader AI. Instant AI explanations, smart notes, focus mode, quizzes, text-to-speech and reading analytics — all in one beautiful reader.';
-const SEO_URL = 'https://focusreader.ai';
-const SEO_IMG = 'https://focusreader.ai/og-image.png';
+const SEO_TITLE =
+  "FocusReader AI — Distraction-Free PDF Reading with AI Insights";
+const SEO_DESC =
+  "Read PDFs deeper and faster with FocusReader AI. Instant AI explanations, smart notes, focus mode, quizzes, text-to-speech and reading analytics — all in one beautiful reader.";
+const SEO_URL = "https://focusreader.ai";
+const SEO_IMG = "https://focusreader.ai/og-image.png";
 
 // ── Features ──────────────────────────────────────────────────────────────────
 const FEATURES = [
-  { icon: <Sparkles size={20} />, color: '#E8C77A', title: 'AI Tutor', desc: 'Highlight any sentence and instantly get plain-English explanations, summaries, or real-world examples powered by advanced LLMs.' },
-  { icon: <BellOff size={20} />, color: '#60A5FA', title: 'Focus Mode', desc: 'One click hides every UI element. A distraction detector tracks when you leave the tab and gently nudges you back.' },
-  { icon: <Brain size={20} />, color: '#F472B6', title: 'AI Quizzes', desc: 'Select a passage and generate a 5-question multiple-choice quiz on the spot to solidify your understanding.' },
-  { icon: <StickyNote size={20} />, color: '#4ADE80', title: 'Smart Notes', desc: 'Save highlighted text with color-coded labels and AI explanations. Organize them into folders for any project.' },
-  { icon: <BarChart2 size={20} />, color: '#A78BFA', title: 'Reading Analytics', desc: 'Track time spent, pages read, focus score, and distraction count for every session — become a better reader.' },
-  { icon: <Headphones size={20} />, color: '#FB923C', title: 'Text-to-Speech', desc: 'Listen to any selected passage with AI-generated voice at adjustable speed and volume.' },
-  { icon: <Search size={20} />, color: '#2DD4BF', title: 'In-Document Search', desc: 'Full-text search across all pages with highlighted snippets and one-click navigation to results.' },
-  { icon: <Layers size={20} />, color: '#E8C77A', title: 'Document Outline', desc: 'Auto-extracted PDF table of contents with nested chapter navigation so you always know where you are.' },
-  { icon: <Globe size={20} />, color: '#60A5FA', title: 'Open from URL', desc: 'Paste any public PDF link and start reading instantly — no download required.' },
-  { icon: <FolderOpen size={20} />, color: '#4ADE80', title: 'Folders & Library', desc: 'Organize notes into named folders. Search across all your saved highlights from one unified library.' },
-  { icon: <Eye size={20} />, color: '#F472B6', title: 'Zoom & Navigation', desc: 'Fine-grained zoom control, smooth page jumping, and an at-a-glance page grid for instant navigation.' },
-  { icon: <Shield size={20} />, color: '#A78BFA', title: 'Privacy First', desc: 'PDFs open directly in your browser via the File System Access API — your documents never leave your device.' },
+  {
+    icon: <Sparkles size={20} />,
+    color: "#E8C77A",
+    title: "AI Tutor",
+    desc: "Highlight any sentence and instantly get plain-English explanations, summaries, or real-world examples powered by advanced LLMs.",
+  },
+  {
+    icon: <BellOff size={20} />,
+    color: "#60A5FA",
+    title: "Focus Mode",
+    desc: "One click hides every UI element. A distraction detector tracks when you leave the tab and gently nudges you back.",
+  },
+  {
+    icon: <Brain size={20} />,
+    color: "#F472B6",
+    title: "AI Quizzes",
+    desc: "Select a passage and generate a 5-question multiple-choice quiz on the spot to solidify your understanding.",
+  },
+  {
+    icon: <StickyNote size={20} />,
+    color: "#4ADE80",
+    title: "Smart Notes",
+    desc: "Save highlighted text with color-coded labels and AI explanations. Organize them into folders for any project.",
+  },
+  {
+    icon: <BarChart2 size={20} />,
+    color: "#A78BFA",
+    title: "Reading Analytics",
+    desc: "Track time spent, pages read, focus score, and distraction count for every session — become a better reader.",
+  },
+  {
+    icon: <Headphones size={20} />,
+    color: "#FB923C",
+    title: "Text-to-Speech",
+    desc: "Listen to any selected passage with AI-generated voice at adjustable speed and volume.",
+  },
+  {
+    icon: <Search size={20} />,
+    color: "#2DD4BF",
+    title: "In-Document Search",
+    desc: "Full-text search across all pages with highlighted snippets and one-click navigation to results.",
+  },
+  {
+    icon: <Layers size={20} />,
+    color: "#E8C77A",
+    title: "Document Outline",
+    desc: "Auto-extracted PDF table of contents with nested chapter navigation so you always know where you are.",
+  },
+  {
+    icon: <Globe size={20} />,
+    color: "#60A5FA",
+    title: "Open from URL",
+    desc: "Paste any public PDF link and start reading instantly — no download required.",
+  },
+  {
+    icon: <FolderOpen size={20} />,
+    color: "#4ADE80",
+    title: "Folders & Library",
+    desc: "Organize notes into named folders. Search across all your saved highlights from one unified library.",
+  },
+  {
+    icon: <Eye size={20} />,
+    color: "#F472B6",
+    title: "Zoom & Navigation",
+    desc: "Fine-grained zoom control, smooth page jumping, and an at-a-glance page grid for instant navigation.",
+  },
+  {
+    icon: <Shield size={20} />,
+    color: "#A78BFA",
+    title: "Privacy First",
+    desc: "PDFs open directly in your browser via the File System Access API — your documents never leave your device.",
+  },
 ];
 
 // ── FadeIn ────────────────────────────────────────────────────────────────────
 function FadeIn({
   children,
   delay = 0,
-  className = '',
+  className = "",
 }: {
   children: React.ReactNode;
   delay?: number;
   className?: string;
 }) {
   const ref = useRef(null);
-  const inView = useInView(ref, { once: true, margin: '-80px' });
+  const inView = useInView(ref, { once: true, margin: "-80px" });
   return (
     <motion.div
       ref={ref}
@@ -66,18 +145,18 @@ export default function LandingPage() {
 
   useEffect(() => {
     const h = () => setScrolled(window.scrollY > 24);
-    window.addEventListener('scroll', h, { passive: true });
-    return () => window.removeEventListener('scroll', h);
+    window.addEventListener("scroll", h, { passive: true });
+    return () => window.removeEventListener("scroll", h);
   }, []);
 
   // ✅ All "Start free" buttons go directly to /dashboard
   // Dashboard should handle auth gating — if not logged in, show login prompt there
   function handleStart() {
-  handleGoogleLogin();
+    handleGoogleLogin();
   }
 
   function handleGoogleLogin() {
-    window.location.href = 'https://focus-reader-backend.onrender.com/auth/google';
+    window.location.href = "http://localhost:5000/auth/google";
   }
 
   return (
@@ -85,7 +164,10 @@ export default function LandingPage() {
       <Helmet>
         <title>{SEO_TITLE}</title>
         <meta name="description" content={SEO_DESC} />
-        <meta name="keywords" content="PDF reader, AI reading, focus mode, AI tutor, PDF annotator, study tool, reading analytics, distraction free" />
+        <meta
+          name="keywords"
+          content="PDF reader, AI reading, focus mode, AI tutor, PDF annotator, study tool, reading analytics, distraction free"
+        />
         <meta name="robots" content="index, follow" />
         <link rel="canonical" href={SEO_URL} />
         <meta property="og:type" content="website" />
@@ -99,18 +181,22 @@ export default function LandingPage() {
         <meta name="twitter:image" content={SEO_IMG} />
         <script type="application/ld+json">
           {JSON.stringify({
-            '@context': 'https://schema.org',
-            '@type': 'SoftwareApplication',
-            name: 'FocusReader AI',
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            name: "FocusReader AI",
             description: SEO_DESC,
             url: SEO_URL,
-            applicationCategory: 'ProductivityApplication',
-            operatingSystem: 'Web',
-            offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+            applicationCategory: "ProductivityApplication",
+            operatingSystem: "Web",
+            offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
           })}
         </script>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin=""
+        />
         <link
           href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600;700&display=swap"
           rel="stylesheet"
@@ -147,15 +233,19 @@ export default function LandingPage() {
         }
       `}</style>
 
-      <div className="min-h-screen" style={{ background: 'var(--bg)', color: 'var(--text)' }}>
-
+      <div
+        className="min-h-screen"
+        style={{ background: "var(--bg)", color: "var(--text)" }}
+      >
         {/* ── Navbar ──────────────────────────────────────────────────────── */}
         <header
           className="fixed top-0 left-0 right-0 z-50 transition-all duration-300"
           style={{
-            background: scrolled ? 'rgba(12,12,14,0.92)' : 'transparent',
-            backdropFilter: scrolled ? 'blur(16px)' : 'none',
-            borderBottom: scrolled ? '1px solid var(--border)' : '1px solid transparent',
+            background: scrolled ? "rgba(12,12,14,0.92)" : "transparent",
+            backdropFilter: scrolled ? "blur(16px)" : "none",
+            borderBottom: scrolled
+              ? "1px solid var(--border)"
+              : "1px solid transparent",
           }}
         >
           <nav className="max-w-6xl mx-auto px-5 h-14 flex items-center justify-between">
@@ -163,16 +253,22 @@ export default function LandingPage() {
             <a href="#" className="flex items-center gap-2 no-underline">
               <div
                 className="w-7 h-7 rounded-lg flex items-center justify-center"
-                style={{ background: 'var(--accent)' }}
+                style={{ background: "var(--accent)" }}
               >
-                <BookOpen size={14} style={{ color: '#0C0C0E' }} />
+                <BookOpen size={14} style={{ color: "#0C0C0E" }} />
               </div>
-              <span className="f-serif text-lg" style={{ color: 'var(--text)' }}>
+              <span
+                className="f-serif text-lg"
+                style={{ color: "var(--text)" }}
+              >
                 FocusReader
               </span>
               <span
                 className="text-xs font-bold px-1.5 py-0.5 rounded-md"
-                style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}
+                style={{
+                  background: "var(--accent-dim)",
+                  color: "var(--accent)",
+                }}
               >
                 AI
               </span>
@@ -181,17 +277,21 @@ export default function LandingPage() {
             {/* Desktop nav */}
             <div className="hidden md:flex items-center gap-6">
               {[
-                { label: 'Features', href: '#features' },
-                { label: 'How it works', href: '#how-it-works' },
-                { label: 'About', href: '#about' },
+                { label: "Features", href: "#features" },
+                { label: "How it works", href: "#how-it-works" },
+                { label: "About", href: "#about" },
               ].map(({ label, href }) => (
                 <a
                   key={label}
                   href={href}
                   className="text-sm font-medium no-underline transition-colors duration-150"
-                  style={{ color: 'var(--text2)' }}
-                  onMouseEnter={e => (e.currentTarget.style.color = 'var(--text)')}
-                  onMouseLeave={e => (e.currentTarget.style.color = 'var(--text2)')}
+                  style={{ color: "var(--text2)" }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.color = "var(--text)")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.color = "var(--text2)")
+                  }
                 >
                   {label}
                 </a>
@@ -204,7 +304,7 @@ export default function LandingPage() {
                 <Link
                   to="/dashboard"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold no-underline transition-opacity hover:opacity-90"
-                  style={{ background: 'var(--accent)', color: '#0C0C0E' }}
+                  style={{ background: "var(--accent)", color: "#0C0C0E" }}
                 >
                   Dashboard <ArrowRight size={13} />
                 </Link>
@@ -213,16 +313,28 @@ export default function LandingPage() {
                   <button
                     onClick={handleGoogleLogin}
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-colors"
-                    style={{ background: 'transparent', color: 'var(--text)', border: '1px solid var(--border2)' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface2)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                    style={{
+                      background: "transparent",
+                      color: "var(--text)",
+                      border: "1px solid var(--border2)",
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background = "var(--surface2)")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background = "transparent")
+                    }
                   >
                     Sign in with Google
                   </button>
                   <button
                     onClick={handleStart}
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-opacity hover:opacity-90"
-                    style={{ background: 'var(--accent)', color: '#0C0C0E', border: 'none' }}
+                    style={{
+                      background: "var(--accent)",
+                      color: "#0C0C0E",
+                      border: "none",
+                    }}
                   >
                     Start free <ArrowRight size={13} />
                   </button>
@@ -233,8 +345,12 @@ export default function LandingPage() {
             {/* Mobile toggle */}
             <button
               className="md:hidden p-2 rounded-lg"
-              style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text2)' }}
-              onClick={() => setMobileOpen(v => !v)}
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                color: "var(--text2)",
+              }}
+              onClick={() => setMobileOpen((v) => !v)}
             >
               {mobileOpen ? <X size={16} /> : <Menu size={16} />}
             </button>
@@ -246,27 +362,37 @@ export default function LandingPage() {
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
               className="md:hidden px-5 pb-4 flex flex-col gap-3"
-              style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}
+              style={{
+                background: "var(--surface)",
+                borderBottom: "1px solid var(--border)",
+              }}
             >
               {[
-                { label: 'Features', href: '#features' },
-                { label: 'How it works', href: '#how-it-works' },
-                { label: 'About', href: '#about' },
+                { label: "Features", href: "#features" },
+                { label: "How it works", href: "#how-it-works" },
+                { label: "About", href: "#about" },
               ].map(({ label, href }) => (
                 <a
                   key={label}
                   href={href}
                   className="py-2 text-sm font-medium no-underline"
-                  style={{ color: 'var(--text2)' }}
+                  style={{ color: "var(--text2)" }}
                   onClick={() => setMobileOpen(false)}
                 >
                   {label}
                 </a>
               ))}
               <button
-                onClick={() => { setMobileOpen(false); handleStart(); }}
+                onClick={() => {
+                  setMobileOpen(false);
+                  handleStart();
+                }}
                 className="flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold"
-                style={{ background: 'var(--accent)', color: '#0C0C0E', border: 'none' }}
+                style={{
+                  background: "var(--accent)",
+                  color: "#0C0C0E",
+                  border: "none",
+                }}
               >
                 Start reading free <ArrowRight size={14} />
               </button>
@@ -279,11 +405,16 @@ export default function LandingPage() {
           {/* Ambient glow */}
           <div
             className="absolute inset-0 pointer-events-none"
-            style={{ background: 'radial-gradient(ellipse 80% 60% at 50% -10%, rgba(232,199,122,0.07) 0%, transparent 70%)' }}
+            style={{
+              background:
+                "radial-gradient(ellipse 80% 60% at 50% -10%, rgba(232,199,122,0.07) 0%, transparent 70%)",
+            }}
           />
           <div
             className="absolute bottom-0 left-0 right-0 h-48 pointer-events-none"
-            style={{ background: 'linear-gradient(to bottom, transparent, var(--bg))' }}
+            style={{
+              background: "linear-gradient(to bottom, transparent, var(--bg))",
+            }}
           />
 
           {/* Badge */}
@@ -292,7 +423,11 @@ export default function LandingPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-6 text-xs font-semibold relative z-10"
-            style={{ background: 'var(--accent-dim)', border: '1px solid rgba(232,199,122,0.2)', color: 'var(--accent)' }}
+            style={{
+              background: "var(--accent-dim)",
+              border: "1px solid rgba(232,199,122,0.2)",
+              color: "var(--accent)",
+            }}
           >
             <Sparkles size={12} /> AI-powered reading — now available
           </motion.div>
@@ -303,10 +438,12 @@ export default function LandingPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.08 }}
             className="f-serif max-w-3xl mx-auto mb-5 leading-tight relative z-10"
-            style={{ fontSize: 'clamp(2.5rem, 6vw, 5rem)', color: 'var(--text)' }}
+            style={{
+              fontSize: "clamp(2.5rem, 6vw, 5rem)",
+              color: "var(--text)",
+            }}
           >
-            Read deeper.{' '}
-            <span className="accent-text">Understand faster.</span>
+            Read deeper. <span className="accent-text">Understand faster.</span>
           </motion.h1>
 
           {/* Subtitle */}
@@ -315,9 +452,10 @@ export default function LandingPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.55, delay: 0.16 }}
             className="max-w-xl mx-auto mb-10 leading-relaxed text-base sm:text-lg relative z-10"
-            style={{ color: 'var(--text2)' }}
+            style={{ color: "var(--text2)" }}
           >
-            A PDF reader that eliminates distractions, explains anything you highlight with AI, and tracks how well you focus — all in one place.
+            A PDF reader that eliminates distractions, explains anything you
+            highlight with AI, and tracks how well you focus — all in one place.
           </motion.p>
 
           {/* CTA buttons */}
@@ -330,16 +468,28 @@ export default function LandingPage() {
             <button
               onClick={handleStart}
               className="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl text-sm font-bold transition-all duration-200 hover:opacity-90 hover:-translate-y-0.5"
-              style={{ background: 'var(--accent)', color: '#0C0C0E', border: 'none' }}
+              style={{
+                background: "var(--accent)",
+                color: "#0C0C0E",
+                border: "none",
+              }}
             >
               Open a PDF now <ArrowRight size={15} />
             </button>
             <a
               href="#features"
               className="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl text-sm font-semibold no-underline transition-colors"
-              style={{ background: 'transparent', color: 'var(--text)', border: '1px solid var(--border2)' }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface2)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              style={{
+                background: "transparent",
+                color: "var(--text)",
+                border: "1px solid var(--border2)",
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = "var(--surface2)")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "transparent")
+              }
             >
               See all features <ChevronDown size={15} />
             </a>
@@ -351,10 +501,11 @@ export default function LandingPage() {
             animate={{ opacity: 1 }}
             transition={{ delay: 0.45 }}
             className="text-xs flex items-center gap-1.5 relative z-10"
-            style={{ color: 'var(--text3)' }}
+            style={{ color: "var(--text3)" }}
           >
-            <Shield size={11} style={{ color: 'var(--accent)' }} />
-            Free to use · No account required to start · Your PDFs never leave your device
+            <Shield size={11} style={{ color: "var(--accent)" }} />
+            Free to use · No account required to start · Your PDFs never leave
+            your device
           </motion.p>
 
           {/* Bounce arrow */}
@@ -362,27 +513,41 @@ export default function LandingPage() {
             animate={{ y: [0, 8, 0] }}
             transition={{ repeat: Infinity, duration: 2.5 }}
             className="absolute bottom-8 left-1/2 -translate-x-1/2"
-            style={{ color: 'var(--text3)' }}
+            style={{ color: "var(--text3)" }}
           >
             <ChevronDown size={20} />
           </motion.div>
         </section>
 
         {/* ── Features ──────────────────────────────────────────────────────── */}
-        <section id="features" className="py-24 px-5" style={{ background: 'var(--bg)' }}>
+        <section
+          id="features"
+          className="py-24 px-5"
+          style={{ background: "var(--bg)" }}
+        >
           <div className="max-w-6xl mx-auto">
             <FadeIn className="text-center mb-14">
-              <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--accent)' }}>
+              <p
+                className="text-xs font-bold uppercase tracking-widest mb-3"
+                style={{ color: "var(--accent)" }}
+              >
                 Everything you need
               </p>
               <h2
                 className="f-serif mb-4"
-                style={{ fontSize: 'clamp(2rem, 4vw, 3rem)', color: 'var(--text)' }}
+                style={{
+                  fontSize: "clamp(2rem, 4vw, 3rem)",
+                  color: "var(--text)",
+                }}
               >
                 A complete reading intelligence platform
               </h2>
-              <p className="max-w-lg mx-auto text-sm leading-relaxed" style={{ color: 'var(--text2)' }}>
-                12 powerful features built into one clean interface — no plugins, no extensions, no friction.
+              <p
+                className="max-w-lg mx-auto text-sm leading-relaxed"
+                style={{ color: "var(--text2)" }}
+              >
+                12 powerful features built into one clean interface — no
+                plugins, no extensions, no friction.
               </p>
             </FadeIn>
 
@@ -391,7 +556,10 @@ export default function LandingPage() {
                 <FadeIn key={f.title} delay={i * 0.04}>
                   <div
                     className="feature-card h-full rounded-2xl p-6 transition-all duration-200"
-                    style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+                    style={{
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                    }}
                   >
                     <div
                       className="w-9 h-9 rounded-xl flex items-center justify-center mb-4"
@@ -399,10 +567,16 @@ export default function LandingPage() {
                     >
                       {f.icon}
                     </div>
-                    <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--text)' }}>
+                    <h3
+                      className="text-sm font-semibold mb-2"
+                      style={{ color: "var(--text)" }}
+                    >
                       {f.title}
                     </h3>
-                    <p className="text-xs leading-relaxed" style={{ color: 'var(--text2)' }}>
+                    <p
+                      className="text-xs leading-relaxed"
+                      style={{ color: "var(--text2)" }}
+                    >
                       {f.desc}
                     </p>
                   </div>
@@ -417,19 +591,25 @@ export default function LandingPage() {
           id="how-it-works"
           className="py-24 px-5"
           style={{
-            background: 'var(--surface)',
-            borderTop: '1px solid var(--border)',
-            borderBottom: '1px solid var(--border)',
+            background: "var(--surface)",
+            borderTop: "1px solid var(--border)",
+            borderBottom: "1px solid var(--border)",
           }}
         >
           <div className="max-w-6xl mx-auto">
             <FadeIn className="text-center mb-16">
-              <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--accent)' }}>
+              <p
+                className="text-xs font-bold uppercase tracking-widest mb-3"
+                style={{ color: "var(--accent)" }}
+              >
                 The workflow
               </p>
               <h2
                 className="f-serif mb-4"
-                style={{ fontSize: 'clamp(2rem, 4vw, 3rem)', color: 'var(--text)' }}
+                style={{
+                  fontSize: "clamp(2rem, 4vw, 3rem)",
+                  color: "var(--text)",
+                }}
               >
                 From upload to mastery in three steps
               </h2>
@@ -440,25 +620,25 @@ export default function LandingPage() {
               <div className="space-y-10">
                 {[
                   {
-                    step: '01',
+                    step: "01",
                     icon: <FileText size={16} />,
-                    color: '#E8C77A',
-                    title: 'Open your PDF',
-                    desc: 'Upload a file from your device, drag and drop it, or paste a public PDF URL. Your documents are processed locally — never sent to our servers.',
+                    color: "#E8C77A",
+                    title: "Open your PDF",
+                    desc: "Upload a file from your device, drag and drop it, or paste a public PDF URL. Your documents are processed locally — never sent to our servers.",
                   },
                   {
-                    step: '02',
+                    step: "02",
                     icon: <BellOff size={16} />,
-                    color: '#60A5FA',
-                    title: 'Enter Focus Mode',
-                    desc: 'Strip away every UI element with one click. The distraction detector watches your tab — if you leave, it gently brings you back.',
+                    color: "#60A5FA",
+                    title: "Enter Focus Mode",
+                    desc: "Strip away every UI element with one click. The distraction detector watches your tab — if you leave, it gently brings you back.",
                   },
                   {
-                    step: '03',
+                    step: "03",
                     icon: <GraduationCap size={16} />,
-                    color: '#4ADE80',
-                    title: 'Learn with AI',
-                    desc: 'Select any text to get an explanation, summary, examples, or a quiz. Notes auto-save to your library with the AI response attached.',
+                    color: "#4ADE80",
+                    title: "Learn with AI",
+                    desc: "Select any text to get an explanation, summary, examples, or a quiz. Notes auto-save to your library with the AI response attached.",
                   },
                 ].map((item, i, arr) => (
                   <FadeIn key={item.step} delay={i * 0.1}>
@@ -477,14 +657,20 @@ export default function LandingPage() {
                       <div>
                         <div
                           className="text-[10px] font-bold uppercase tracking-widest mb-1"
-                          style={{ color: 'var(--text3)' }}
+                          style={{ color: "var(--text3)" }}
                         >
                           Step {item.step}
                         </div>
-                        <h3 className="text-base font-semibold mb-1.5" style={{ color: 'var(--text)' }}>
+                        <h3
+                          className="text-base font-semibold mb-1.5"
+                          style={{ color: "var(--text)" }}
+                        >
                           {item.title}
                         </h3>
-                        <p className="text-sm leading-relaxed" style={{ color: 'var(--text2)' }}>
+                        <p
+                          className="text-sm leading-relaxed"
+                          style={{ color: "var(--text2)" }}
+                        >
                           {item.desc}
                         </p>
                       </div>
@@ -497,20 +683,36 @@ export default function LandingPage() {
               <FadeIn delay={0.2}>
                 <div
                   className="rounded-2xl overflow-hidden border"
-                  style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+                  style={{
+                    background: "var(--bg)",
+                    borderColor: "var(--border)",
+                  }}
                 >
                   {/* Fake topbar */}
                   <div
                     className="flex items-center justify-between px-4 h-10 border-b"
-                    style={{ borderColor: 'var(--border)', background: 'var(--surface2)' }}
+                    style={{
+                      borderColor: "var(--border)",
+                      background: "var(--surface2)",
+                    }}
                   >
                     <div className="flex items-center gap-2">
-                      <div className="w-5 h-5 rounded-md" style={{ background: 'var(--accent-dim)' }} />
-                      <div className="h-2.5 w-24 rounded-full" style={{ background: 'var(--border2)' }} />
+                      <div
+                        className="w-5 h-5 rounded-md"
+                        style={{ background: "var(--accent-dim)" }}
+                      />
+                      <div
+                        className="h-2.5 w-24 rounded-full"
+                        style={{ background: "var(--border2)" }}
+                      />
                     </div>
                     <div className="flex gap-1.5">
-                      {['#E8C77A', '#60A5FA', '#4ADE80'].map(c => (
-                        <div key={c} className="w-5 h-5 rounded-md" style={{ background: `${c}20` }} />
+                      {["#E8C77A", "#60A5FA", "#4ADE80"].map((c) => (
+                        <div
+                          key={c}
+                          className="w-5 h-5 rounded-md"
+                          style={{ background: `${c}20` }}
+                        />
                       ))}
                     </div>
                   </div>
@@ -519,15 +721,19 @@ export default function LandingPage() {
                     {/* Sidebar strip */}
                     <div
                       className="w-10 border-r flex flex-col items-center py-3 gap-3 shrink-0"
-                      style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+                      style={{
+                        borderColor: "var(--border)",
+                        background: "var(--surface)",
+                      }}
                     >
                       {[Layers, Search, StickyNote].map((Icon, i) => (
                         <div
                           key={i}
                           className="w-6 h-6 rounded-md flex items-center justify-center"
                           style={{
-                            background: i === 0 ? 'var(--accent-dim)' : 'transparent',
-                            color: i === 0 ? 'var(--accent)' : 'var(--text3)',
+                            background:
+                              i === 0 ? "var(--accent-dim)" : "transparent",
+                            color: i === 0 ? "var(--accent)" : "var(--text3)",
                           }}
                         >
                           <Icon size={12} />
@@ -536,41 +742,55 @@ export default function LandingPage() {
                     </div>
                     {/* PDF lines */}
                     <div className="flex-1 p-5 space-y-2">
-                      <div className="h-2.5 w-3/4 rounded-full" style={{ background: 'var(--border2)' }} />
+                      <div
+                        className="h-2.5 w-3/4 rounded-full"
+                        style={{ background: "var(--border2)" }}
+                      />
                       {[1, 0.9, 1, 0.7, 1, 0.85].map((w, i) => (
                         <div
                           key={i}
                           className="h-2 rounded-full"
-                          style={{ background: 'var(--border)', width: `${w * 100}%` }}
+                          style={{
+                            background: "var(--border)",
+                            width: `${w * 100}%`,
+                          }}
                         />
                       ))}
                       {/* Highlight */}
                       <div
                         className="h-2 w-3/5 rounded-full"
-                        style={{ background: 'rgba(232,199,122,0.25)' }}
+                        style={{ background: "rgba(232,199,122,0.25)" }}
                       />
                       {[0.8, 1, 0.65].map((w, i) => (
                         <div
                           key={i}
                           className="h-2 rounded-full"
-                          style={{ background: 'var(--border)', width: `${w * 100}%` }}
+                          style={{
+                            background: "var(--border)",
+                            width: `${w * 100}%`,
+                          }}
                         />
                       ))}
                       {/* AI bubble */}
                       <div
                         className="mt-3 p-3 rounded-xl text-[10px] leading-relaxed"
-                        style={{ background: 'var(--surface2)', border: '1px solid var(--border2)', color: 'var(--text2)' }}
+                        style={{
+                          background: "var(--surface2)",
+                          border: "1px solid var(--border2)",
+                          color: "var(--text2)",
+                        }}
                       >
                         <div
                           className="flex items-center gap-1.5 mb-1.5"
-                          style={{ color: 'var(--accent)' }}
+                          style={{ color: "var(--accent)" }}
                         >
                           <Sparkles size={10} />
                           <span className="font-bold uppercase tracking-widest text-[9px]">
                             AI Explanation
                           </span>
                         </div>
-                        This concept refers to writing code that is easy to read, understand and maintain by other developers…
+                        This concept refers to writing code that is easy to
+                        read, understand and maintain by other developers…
                       </div>
                     </div>
                   </div>
@@ -581,35 +801,67 @@ export default function LandingPage() {
         </section>
 
         {/* ── About ─────────────────────────────────────────────────────────── */}
-        <section id="about" className="py-24 px-5" style={{ background: 'var(--bg)' }}>
+        <section
+          id="about"
+          className="py-24 px-5"
+          style={{ background: "var(--bg)" }}
+        >
           <div className="max-w-2xl mx-auto text-center">
             <FadeIn>
               <p
                 className="text-xs font-bold uppercase tracking-widest mb-4"
-                style={{ color: 'var(--accent)' }}
+                style={{ color: "var(--accent)" }}
               >
                 Our mission
               </p>
               <h2
                 className="f-serif mb-5 leading-tight"
-                style={{ fontSize: 'clamp(1.75rem, 3.5vw, 2.5rem)', color: 'var(--text)' }}
+                style={{
+                  fontSize: "clamp(1.75rem, 3.5vw, 2.5rem)",
+                  color: "var(--text)",
+                }}
               >
                 We believe reading is a superpower.
               </h2>
-              <p className="text-sm leading-relaxed mb-4" style={{ color: 'var(--text2)' }}>
-                FocusReader was born from a frustration: the modern web is designed to steal your attention, yet deep learning demands it. We built the reading environment we always wanted — one that gets out of the way and lets AI bridge the gap between reading and truly understanding.
+              <p
+                className="text-sm leading-relaxed mb-4"
+                style={{ color: "var(--text2)" }}
+              >
+                FocusReader was born from a frustration: the modern web is
+                designed to steal your attention, yet deep learning demands it.
+                We built the reading environment we always wanted — one that
+                gets out of the way and lets AI bridge the gap between reading
+                and truly understanding.
               </p>
-              <p className="text-sm leading-relaxed mb-8" style={{ color: 'var(--text2)' }}>
-                Your documents open directly in your browser via the File System Access API. We never store your PDFs on our servers. Your reading is private by design.
+              <p
+                className="text-sm leading-relaxed mb-8"
+                style={{ color: "var(--text2)" }}
+              >
+                Your documents open directly in your browser via the File System
+                Access API. We never store your PDFs on our servers. Your
+                reading is private by design.
               </p>
               <div className="flex flex-wrap justify-center gap-2">
-                {['Privacy-first', 'Local file access', 'No ads ever', 'Open to feedback'].map(b => (
+                {[
+                  "Privacy-first",
+                  "Local file access",
+                  "No ads ever",
+                  "Open to feedback",
+                ].map((b) => (
                   <div
                     key={b}
                     className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full"
-                    style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text2)' }}
+                    style={{
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text2)",
+                    }}
                   >
-                    <CheckCircle2 size={11} style={{ color: 'var(--accent)' }} /> {b}
+                    <CheckCircle2
+                      size={11}
+                      style={{ color: "var(--accent)" }}
+                    />{" "}
+                    {b}
                   </div>
                 ))}
               </div>
@@ -620,29 +872,47 @@ export default function LandingPage() {
         {/* ── CTA banner ────────────────────────────────────────────────────── */}
         <section
           className="py-24 px-5"
-          style={{ background: 'var(--surface)', borderTop: '1px solid var(--border)' }}
+          style={{
+            background: "var(--surface)",
+            borderTop: "1px solid var(--border)",
+          }}
         >
           <FadeIn>
             <div className="max-w-2xl mx-auto text-center">
               <div
                 className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-6 text-xs font-semibold"
-                style={{ background: 'var(--accent-dim)', border: '1px solid rgba(232,199,122,0.2)', color: 'var(--accent)' }}
+                style={{
+                  background: "var(--accent-dim)",
+                  border: "1px solid rgba(232,199,122,0.2)",
+                  color: "var(--accent)",
+                }}
               >
                 <Zap size={12} /> Free to start — no credit card required
               </div>
               <h2
                 className="f-serif mb-4 leading-tight"
-                style={{ fontSize: 'clamp(2rem, 4vw, 3.25rem)', color: 'var(--text)' }}
+                style={{
+                  fontSize: "clamp(2rem, 4vw, 3.25rem)",
+                  color: "var(--text)",
+                }}
               >
                 Start your first focused reading session
               </h2>
-              <p className="text-sm mb-10 leading-relaxed" style={{ color: 'var(--text2)' }}>
-                Open a PDF, let AI guide you through it, and experience what deep reading actually feels like.
+              <p
+                className="text-sm mb-10 leading-relaxed"
+                style={{ color: "var(--text2)" }}
+              >
+                Open a PDF, let AI guide you through it, and experience what
+                deep reading actually feels like.
               </p>
               <button
                 onClick={handleStart}
                 className="inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl text-sm font-bold transition-all duration-200 hover:opacity-90 hover:-translate-y-0.5"
-                style={{ background: 'var(--accent)', color: '#0C0C0E', border: 'none' }}
+                style={{
+                  background: "var(--accent)",
+                  color: "#0C0C0E",
+                  border: "none",
+                }}
               >
                 Open a PDF now <ArrowRight size={15} />
               </button>
@@ -651,23 +921,35 @@ export default function LandingPage() {
         </section>
 
         {/* ── Footer ────────────────────────────────────────────────────────── */}
-        <footer style={{ background: 'var(--bg)', borderTop: '1px solid var(--border)' }}>
+        <footer
+          style={{
+            background: "var(--bg)",
+            borderTop: "1px solid var(--border)",
+          }}
+        >
           <div className="max-w-5xl mx-auto px-5 py-10 flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-2">
               <div
                 className="w-6 h-6 rounded-md flex items-center justify-center"
-                style={{ background: 'var(--accent)' }}
+                style={{ background: "var(--accent)" }}
               >
-                <BookOpen size={12} style={{ color: '#0C0C0E' }} />
+                <BookOpen size={12} style={{ color: "#0C0C0E" }} />
               </div>
-              <span className="f-serif text-base" style={{ color: 'var(--text)' }}>FocusReader</span>
-              <span className="text-xs" style={{ color: 'var(--text3)' }}>AI</span>
+              <span
+                className="f-serif text-base"
+                style={{ color: "var(--text)" }}
+              >
+                FocusReader
+              </span>
+              <span className="text-xs" style={{ color: "var(--text3)" }}>
+                AI
+              </span>
             </div>
 
             <nav className="flex flex-wrap justify-center gap-6">
               {[
-                { label: 'Features', href: '#features' },
-                { label: 'How it works', href: '#how-it-works' },
+                { label: "Features", href: "#features" },
+                { label: "How it works", href: "#how-it-works" },
                 // { label: 'About', href: '#about' },
                 // { label: 'Privacy Policy', href: '/privacy' },
                 // { label: 'Terms', href: '/terms' },
@@ -676,16 +958,20 @@ export default function LandingPage() {
                   key={label}
                   href={href}
                   className="text-xs no-underline transition-colors"
-                  style={{ color: 'var(--text2)' }}
-                  onMouseEnter={e => (e.currentTarget.style.color = 'var(--text)')}
-                  onMouseLeave={e => (e.currentTarget.style.color = 'var(--text2)')}
+                  style={{ color: "var(--text2)" }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.color = "var(--text)")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.color = "var(--text2)")
+                  }
                 >
                   {label}
                 </a>
               ))}
             </nav>
 
-            <p className="text-xs" style={{ color: 'var(--text3)' }}>
+            <p className="text-xs" style={{ color: "var(--text3)" }}>
               © {new Date().getFullYear()} FocusReader AI. All rights reserved.
             </p>
           </div>
