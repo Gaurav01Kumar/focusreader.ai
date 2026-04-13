@@ -1,1 +1,2 @@
-export const getBaseDomain=()=>'https://focus-reader-backend.onrender.com/api/'
+export const getBaseDomain = () =>
+  "https://focus-reader-backend.onrender.com/api/";

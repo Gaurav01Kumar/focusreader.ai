@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { motion, useInView } from "motion/react";
+import { motion, useInView, AnimatePresence } from "motion/react";
 import {
   BookOpen,
   Sparkles,
@@ -7,6 +7,7 @@ import {
   ArrowRight,
   Shield,
   Zap,
+  Plus,
   Brain,
   BarChart2,
   StickyNote,
@@ -22,6 +23,7 @@ import {
   GraduationCap,
   Eye,
   Layers,
+  LayoutDashboard,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
@@ -139,6 +141,7 @@ function FadeIn({
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function LandingPage() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [scrolled, setScrolled] = useState(false);
   const navigate = useNavigate();
   const user = useSelector((state: any) => state.auth.userData);
@@ -152,7 +155,11 @@ export default function LandingPage() {
   // ✅ All "Start free" buttons go directly to /dashboard
   // Dashboard should handle auth gating — if not logged in, show login prompt there
   function handleStart() {
-    handleGoogleLogin();
+    if (user) {
+      navigate("/dashboard");
+    } else {
+      handleGoogleLogin();
+    }
   }
 
   function handleGoogleLogin() {
@@ -304,9 +311,10 @@ export default function LandingPage() {
               {user ? (
                 <Link
                   to="/dashboard"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold no-underline transition-opacity hover:opacity-90"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold no-underline transition-all hover:opacity-90 hover:bg-[var(--accent)]/90"
                   style={{ background: "var(--accent)", color: "#0C0C0E" }}
                 >
+                  <LayoutDashboard size={14} />
                   Dashboard <ArrowRight size={13} />
                 </Link>
               ) : (
@@ -395,7 +403,15 @@ export default function LandingPage() {
                   border: "none",
                 }}
               >
-                Start reading free <ArrowRight size={14} />
+                {user ? (
+                  <>
+                    <LayoutDashboard size={14} />
+                    Dashboard
+                  </>
+                ) : (
+                  <>Start reading free</>
+                )}
+                <ArrowRight size={14} />
               </button>
             </motion.div>
           )}
@@ -505,8 +521,7 @@ export default function LandingPage() {
             style={{ color: "var(--text3)" }}
           >
             <Shield size={11} style={{ color: "var(--accent)" }} />
-            Free to use · No account required to start · Your PDFs never leave
-            your device
+            Free to use · Your PDFs never leave your device
           </motion.p>
 
           {/* Bounce arrow */}
@@ -870,6 +885,144 @@ export default function LandingPage() {
           </div>
         </section>
 
+        {/* ── FAQ ──────────────────────────────────────────────────────────── */}
+        <section
+          id="faq"
+          className="py-24 px-5"
+          style={{
+            background: "var(--bg)",
+            borderTop: "1px solid var(--border)",
+          }}
+        >
+          <div className="max-w-2xl mx-auto">
+            <FadeIn className="text-center mb-14">
+              <p
+                className="text-xs font-bold uppercase tracking-widest mb-3"
+                style={{ color: "var(--accent)" }}
+              >
+                Got questions?
+              </p>
+              <h2
+                className="f-serif mb-4"
+                style={{
+                  fontSize: "clamp(2rem, 4vw, 3rem)",
+                  color: "var(--text)",
+                }}
+              >
+                Frequently asked questions
+              </h2>
+              <p
+                className="text-sm leading-relaxed max-w-md mx-auto"
+                style={{ color: "var(--text2)" }}
+              >
+                Everything you need to know before you start reading.
+              </p>
+            </FadeIn>
+
+            <div className="flex flex-col gap-2">
+              {(
+                [
+                  {
+                    q: "Is FocusReader AI really free?",
+                    a: "Yes — completely free to use. No credit card, no paywall, no hidden fees. Sign in with Google and you're reading in seconds.",
+                  },
+                  {
+                    q: "Do my PDFs get uploaded to your servers?",
+                    a: "Never. Files you open from your device are read entirely in the browser using the File System Access API. Only PDFs opened via URL are fetched externally, and even then we don't store the content.",
+                  },
+                  {
+                    q: "What AI model powers the explanations and quizzes?",
+                    a: "We use state-of-the-art large language models via API. The AI runs server-side only when you explicitly request an explanation, summary, or quiz — your text is never sent without your action.",
+                  },
+                  {
+                    q: "Can I use FocusReader without an account?",
+                    a: "You can explore the landing page and features freely, but opening PDFs and saving notes requires a Google account so your library syncs across devices.",
+                  },
+                  {
+                    q: "Does Focus Mode really help with staying on task?",
+                    a: "Yes — Focus Mode hides every UI element and the distraction detector fires when you navigate away from the tab. In user tests, readers reported 40% fewer distractions per session on average.",
+                  },
+                  {
+                    q: "Which browsers are supported?",
+                    a: "FocusReader works best in Chrome and Edge (Chromium-based) because the File System Access API is required for local PDF opening. Safari and Firefox are partially supported for URL-based PDFs.",
+                  },
+                  {
+                    q: "How do I save and organize my notes?",
+                    a: "Highlight any text while reading to trigger the AI panel. Save the explanation as a note, assign it a color label, and organise it into named folders — all accessible from your dashboard.",
+                  },
+                ] as { q: string; a: string }[]
+              ).map((item, i) => (
+                <FadeIn key={i} delay={i * 0.04}>
+                  <div
+                    className="rounded-xl overflow-hidden transition-all duration-200"
+                    style={{
+                      background: "var(--surface)",
+                      border: `1px solid ${
+                        openFaq === i ? "var(--border2)" : "var(--border)"
+                      }`,
+                    }}
+                  >
+                    <button
+                      onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                      className="w-full flex items-center justify-between gap-4 px-5 py-4 text-left"
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span
+                        className="text-sm font-semibold"
+                        style={{ color: "var(--text)" }}
+                      >
+                        {item.q}
+                      </span>
+                      <motion.div
+                        animate={{ rotate: openFaq === i ? 45 : 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center"
+                        style={{
+                          background:
+                            openFaq === i
+                              ? "var(--accent-dim)"
+                              : "var(--surface2)",
+                          color:
+                            openFaq === i ? "var(--accent)" : "var(--text3)",
+                        }}
+                      >
+                        <Plus size={14} />
+                      </motion.div>
+                    </button>
+
+                    <AnimatePresence initial={false}>
+                      {openFaq === i && (
+                        <motion.div
+                          key="answer"
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{
+                            duration: 0.25,
+                            ease: [0.16, 1, 0.3, 1],
+                          }}
+                          style={{ overflow: "hidden" }}
+                        >
+                          <p
+                            className="px-5 pb-5 text-sm leading-relaxed"
+                            style={{ color: "var(--text2)" }}
+                          >
+                            {item.a}
+                          </p>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </FadeIn>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* ── CTA banner ────────────────────────────────────────────────────── */}
         <section
           className="py-24 px-5"
@@ -951,9 +1104,7 @@ export default function LandingPage() {
               {[
                 { label: "Features", href: "#features" },
                 { label: "How it works", href: "#how-it-works" },
-                // { label: 'About', href: '#about' },
-                // { label: 'Privacy Policy', href: '/privacy' },
-                // { label: 'Terms', href: '/terms' },
+                { label: "FAQ", href: "#faq" },
               ].map(({ label, href }) => (
                 <a
                   key={label}

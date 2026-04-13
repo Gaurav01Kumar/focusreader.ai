@@ -279,8 +279,24 @@ export default function Reader() {
         const { file_path, isUrl, fileId, name, lastPage } = r.data;
         setFileName(name);
         setRestoredPage(lastPage || 1);
-        if (isUrl) setFile(file_path);
-        else await reopenFile(fileId);
+        if (isUrl) {
+          // Instead of: setFile(file_path)
+          console.log("called");
+          try {
+            const proxyUrl = `${getBaseDomain()}proxy-pdf?url=${encodeURIComponent(file_path)}`;
+            const res = await fetch(proxyUrl);
+            if (!res.ok) throw new Error();
+            const blob = await res.blob();
+            const localFile = new File([blob], name, {
+              type: "application/pdf",
+            });
+            setFile(localFile); // Now treated as a local file, no CORS issues
+          } catch {
+            setFile(file_path); // fallback to direct (works if CORS allowed)
+          }
+        } else {
+          await reopenFile(fileId);
+        }
       }
     } catch {}
   }
