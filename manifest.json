@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "FocusReader AI",
+  "version": "1.0.0",
+  "description": "AI-Powered PDF Reader for Deep Learning",
+  "action": {
+    "default_title": "Open FocusReader AI"
+  },
+  "side_panel": {
+    "default_path": "index.html"
+  },
+  "permissions": ["sidePanel", "storage"],
+  "host_permissions": [
+    "http://localhost:5000/*",
+    "https://focusreader-ai.onrender.com/*"
+  ],
+  "icons": {
+    "128": "icon.svg"
+  },
+  "background": {
+    "service_worker": "src/background.ts",
+    "type": "module"
+  }
+}

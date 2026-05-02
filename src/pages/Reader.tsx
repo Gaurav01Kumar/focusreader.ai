@@ -50,6 +50,9 @@ import { ReaderApi } from "../apis/readeer.service";
 import Anytics from "../components/Anytics";
 import { DashboardApi } from "../apis/dashboard.api";
 import QuizModel from "../components/QuizModel";
+import { useSelector } from "react-redux";
+import { RootState } from "../redux/store";
+import { GuestStorage } from "../services/storageService";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -147,6 +150,7 @@ type LeftTab = "outline" | "search" | "notes";
 
 // ─── Main Reader ─────────────────────────────────────────────────────────────
 export default function Reader() {
+  const { userData: user, isGuest } = useSelector((state: RootState) => state.auth);
   const { pdfId } = useParams();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
@@ -283,6 +287,34 @@ export default function Reader() {
   async function fetchPdfAndData() {
     setIsOpening(true);
     try {
+      if (isGuest) {
+          const files = await GuestStorage.getRecentFiles();
+          const file = files.find(f => f._id === pdfId);
+          if (file) {
+              const { file_path, isUrl, fileId, name, lastPage } = file;
+              setFileName(name);
+              setRestoredPage(lastPage || 1);
+              if (isUrl) {
+                  try {
+                    const proxyUrl = `${getBaseDomain()}proxy-pdf?url=${encodeURIComponent(file_path)}`;
+                    const res = await fetch(proxyUrl);
+                    if (!res.ok) throw new Error();
+                    const blob = await res.blob();
+                    const localFile = new File([blob], name, {
+                      type: "application/pdf",
+                    });
+                    setFile(localFile);
+                  } catch {
+                    setFile(file_path);
+                  }
+              } else {
+                  await reopenFile(fileId);
+              }
+          } else {
+              setIsOpening(false);
+          }
+          return;
+      }
       const r = await ReaderApi.getInstance().getRecentFileId(pdfId as string);
       if (r.statusCode === 200) {
         const { file_path, isUrl, fileId, name, lastPage } = r.data;
@@ -422,6 +454,10 @@ export default function Reader() {
   const handleAskAI = async (
     type: "explain" | "summarize" | "examples" = "explain",
   ) => {
+    if (isGuest) {
+      showToast("AI features require signing in", "error");
+      return;
+    }
     if (!isOnline || !selectedText) return;
     setRightOpen(true);
     // On mobile, close left panel when AI opens to save space
@@ -577,6 +613,10 @@ export default function Reader() {
 
   // ── Quiz ───────────────────────────────────────────────────────────────────
   const handleGenerateQuiz = async () => {
+    if (isGuest) {
+        showToast("AI quizzes require signing in", "error");
+        return;
+    }
     if (!selectedText || !isOnline) return;
     setIsAiLoading(true);
     setSelectionCoords(null);
@@ -675,6 +715,23 @@ export default function Reader() {
         aiExplanation ||
         [...chatHistory].reverse().find((m) => m.role === "ai")?.content;
 
+      if (isGuest) {
+          await GuestStorage.saveNote({
+              text: noteText,
+              explanation: noteExplanation || undefined,
+              pageNumber,
+              folderId: selectedFolderId,
+              highlight: selectedColor,
+              fileId: pdfId as string,
+          });
+          setSelectedText("");
+          setAiExplanation(null);
+          setChatHistory([]);
+          loadNotes();
+          showToast("Note saved", "success");
+          return;
+      }
+
       const response = await ReaderApi.getInstance().saveNote({
         text: noteText,
         explanation: noteExplanation || undefined,
@@ -700,6 +757,12 @@ export default function Reader() {
 
   async function loadNotes() {
     try {
+      if (isGuest) {
+          const allNotes = await GuestStorage.getNotes();
+          const filtered = allNotes.filter(n => n.fileId === pdfId);
+          setNotes(filtered as any);
+          return;
+      }
       const r = await ReaderApi.getInstance().getNotesByPdfId(pdfId as string);
       if (r.statusCode === 200) setNotes(r.data);
       else showToast("Failed to load notes", "error");
@@ -710,6 +773,14 @@ export default function Reader() {
 
   const handleCreateFolder = async () => {
     try {
+      if (isGuest) {
+          await GuestStorage.saveFolder(newFolderName);
+          setNewFolderName("");
+          setIsCreatingFolder(false);
+          loadFolders();
+          showToast("Folder created", "success");
+          return;
+      }
       const response = await DashboardApi.getInstance().createFolder({
         name: newFolderName,
       });
@@ -728,6 +799,11 @@ export default function Reader() {
 
   async function loadFolders() {
     try {
+      if (isGuest) {
+          const f = await GuestStorage.getFolders();
+          setFolders(f);
+          return;
+      }
       const r = await DashboardApi.getInstance().getFolders();
       if (r.statusCode === 200) setFolders(r.data);
       else showToast("Failed to load folders", "error");
@@ -738,6 +814,12 @@ export default function Reader() {
 
   async function handleDeleteNote(noteId: string) {
     try {
+      if (isGuest) {
+          await GuestStorage.deleteNote(noteId);
+          loadNotes();
+          showToast("Note deleted", "success");
+          return;
+      }
       const response = await ReaderApi.getInstance().deleteNote(noteId);
       if (response.statusCode === 200) {
         loadNotes();
@@ -755,6 +837,23 @@ export default function Reader() {
 
   // Track reading progress via beacon
   useEffect(() => {
+    if (isGuest) {
+        // For guest, update last page in local storage on unmount or visibility change
+        const saveGuestProgress = () => {
+            GuestStorage.updateRecentFile(pdfId as string, {
+                lastPage: pageNumber
+            });
+        };
+        window.addEventListener("beforeunload", saveGuestProgress);
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "hidden") saveGuestProgress();
+        });
+        return () => {
+            window.removeEventListener("beforeunload", saveGuestProgress);
+            document.removeEventListener("visibilitychange", saveGuestProgress);
+        };
+    }
+
     const payload = () =>
       JSON.stringify({
         fileId: pdfId,
@@ -786,7 +885,7 @@ export default function Reader() {
       window.removeEventListener("beforeunload", handleUnload);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [pageNumber, pdfId, numPages, timeSpent, distractionCount, pagesRead]);
+  }, [pageNumber, pdfId, numPages, timeSpent, distractionCount, pagesRead, isGuest]);
 
   // ── Panel width helpers ────────────────────────────────────────────────────
   // On mobile, panels are fixed full-screen bottom sheets

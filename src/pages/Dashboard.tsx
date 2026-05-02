@@ -33,6 +33,7 @@ import { useSelector } from "react-redux";
 import { RootState } from "../redux/store";
 import { AuthApiService } from "../apis/auth.service";
 import PdfCard from "../components/PdfCard";
+import { GuestStorage } from "../services/storageService";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Note {
@@ -75,7 +76,7 @@ const NOTE_COLORS = [
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const user = useSelector((state: RootState) => state.auth.userData);
+  const { userData: user, isGuest } = useSelector((state: RootState) => state.auth);
   const firstName = user?.firstName ?? user?.fullName?.split(" ")[0] ?? "there";
   const navigate = useNavigate();
 
@@ -99,6 +100,11 @@ export default function Dashboard() {
   // ── Data ───────────────────────────────────────────────────────────────────
   async function loadRecentFiles() {
     try {
+      if (isGuest) {
+        const files = await GuestStorage.getRecentFiles();
+        setRecentFiles(files);
+        return;
+      }
       const r: any = await DashboardApi.getInstance().getRecentFiles();
       if (r.statusCode === 200) setRecentFiles(r.data);
       else showToast("Failed to load recent files", "error");
@@ -108,7 +114,48 @@ export default function Dashboard() {
   }
   useEffect(() => {
     loadRecentFiles();
+    
+    // Handle URL from browser extension
+    const params = new URLSearchParams(window.location.search);
+    const openUrl = params.get('openPdfUrl');
+    if (openUrl) {
+      handleOpenUrl(openUrl);
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
   }, []);
+
+  async function handleOpenUrl(url: string) {
+    setIsUrlLoading(true);
+    try {
+      const r = await DashboardApi.getInstance().handleOpenNewFile({
+        name: url.split("/").pop() || "Remote PDF",
+        size: 0,
+        isUrl: true,
+        fileId: url,
+        file_path: url,
+      });
+      if (r.statusCode === 201) {
+        navigate(`/reader/${r.data._id}`);
+      } else {
+        // If not logged in, we should handle guest mode for the extension too
+        if (isGuest) {
+          const guestFile = await GuestStorage.saveRecentFile({
+            name: url.split("/").pop() || "Remote PDF",
+            size: 0,
+            isUrl: true,
+            fileId: url,
+            file_path: url
+          });
+          navigate(`/reader/${guestFile._id}`);
+        }
+      }
+    } catch {
+      showToast("Failed to open PDF from extension", "error");
+    } finally {
+      setIsUrlLoading(false);
+    }
+  }
   useEffect(() => {
     if (isCreatingFolder) setTimeout(() => folderInputRef.current?.focus(), 50);
   }, [isCreatingFolder]);
@@ -126,6 +173,19 @@ export default function Dashboard() {
       const file = await fh.getFile();
       const fileId = `${file.name}-${file.size}`;
       await set(fileId, fh);
+
+      if (isGuest) {
+        const r = await GuestStorage.saveRecentFile({
+            name: file.name,
+            size: file.size,
+            isUrl: false,
+            fileId,
+            file_path: file.name
+        });
+        navigate(`/reader/${r._id}`);
+        return;
+      }
+
       const r = await DashboardApi.getInstance().handleOpenNewFile({
         name: file.name,
         size: file.size,
@@ -170,6 +230,12 @@ export default function Dashboard() {
 
   const handleDeleteRecent = async (id: string) => {
     try {
+      if (isGuest) {
+          await GuestStorage.deleteRecentFile(id);
+          loadRecentFiles();
+          showToast("Removed", "success");
+          return;
+      }
       const r = await DashboardApi.getInstance().deleteRecentFile(id);
       if (r.statusCode === 200) {
         loadRecentFiles();
@@ -191,6 +257,17 @@ export default function Dashboard() {
     }
     const fileId = `${file.name}-${file.size}`;
     try {
+      if (isGuest) {
+          const r = await GuestStorage.saveRecentFile({
+              name: file.name,
+              size: file.size,
+              isUrl: false,
+              fileId,
+              file_path: file.name
+          });
+          navigate(`/reader/${r._id}`);
+          return;
+      }
       const r = await DashboardApi.getInstance().handleOpenNewFile({
         name: file.name,
         size: file.size,
@@ -212,6 +289,20 @@ export default function Dashboard() {
     try {
       if (!pdfUrl.startsWith("http://") && !pdfUrl.startsWith("https://"))
         throw new Error("URL must start with http:// or https://");
+
+      if (isGuest) {
+          const r = await GuestStorage.saveRecentFile({
+              name: pdfUrl.split("/").pop() || "Remote PDF",
+              size: 0,
+              isUrl: true,
+              fileId: pdfUrl,
+              file_path: pdfUrl
+          });
+          setPdfUrl("");
+          navigate(`/reader/${r._id}`);
+          return;
+      }
+
       const r = await DashboardApi.getInstance().handleOpenNewFile({
         name: pdfUrl.split("/").pop() || "Remote PDF",
         size: 0,
@@ -253,6 +344,14 @@ export default function Dashboard() {
   // ── Folders ────────────────────────────────────────────────────────────────
   const handleCreateFolder = async () => {
     try {
+      if (isGuest) {
+          await GuestStorage.saveFolder(newFolderName);
+          setNewFolderName("");
+          setIsCreatingFolder(false);
+          loadFolders();
+          showToast("Folder created", "success");
+          return;
+      }
       const response = await DashboardApi.getInstance().createFolder({
         name: newFolderName,
       });
@@ -270,6 +369,12 @@ export default function Dashboard() {
   };
   const handleDeleteFolder = async (id: string) => {
     try {
+      if (isGuest) {
+          await GuestStorage.deleteFolder(id);
+          loadFolders();
+          showToast("Folder deleted", "success");
+          return;
+      }
       const response = await DashboardApi.getInstance().deleteFolder(id);
       if (response.statusCode === 200) {
         loadFolders();
@@ -293,6 +398,11 @@ export default function Dashboard() {
 
   async function loadFolders() {
     try {
+      if (isGuest) {
+          const f = await GuestStorage.getFolders();
+          setFolders(f);
+          return;
+      }
       const r = await DashboardApi.getInstance().getFolders();
       if (r.statusCode === 200) setFolders(r.data);
       else showToast("Failed to load folders", "error");
@@ -302,6 +412,14 @@ export default function Dashboard() {
   }
   async function loadNotes(folderId: string) {
     try {
+      if (isGuest) {
+          const allNotes = await GuestStorage.getNotes();
+          const filtered = folderId 
+            ? allNotes.filter(n => n.folderId === folderId)
+            : allNotes;
+          setNotes(filtered as any);
+          return;
+      }
       const response =
         await DashboardApi.getInstance().getNotesByFolder(folderId);
       if (response.statusCode === 200) {
@@ -326,6 +444,11 @@ export default function Dashboard() {
 
   const handleLogout = async () => {
     try {
+      if (isGuest) {
+          localStorage.removeItem("isGuest");
+          window.location.href = "/";
+          return;
+      }
       await AuthApiService.getInstance().logout();
       window.location.href = "/";
     } catch {

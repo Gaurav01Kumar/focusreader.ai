@@ -27,7 +27,8 @@ import {
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
+import { guestLogin } from "../redux/slice/authSlice";
 
 // ── SEO ───────────────────────────────────────────────────────────────────────
 const SEO_TITLE =
@@ -162,9 +163,18 @@ export default function LandingPage() {
     }
   }
 
+  const dispatch = useDispatch();
+
   function handleGoogleLogin() {
-    window.location.href =
-      "https://focus-reader-backend.onrender.com/auth/google";
+    const backendUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+    const redirectTo = window.location.origin + "/dashboard";
+    window.location.href = `${backendUrl}/auth/google?redirectTo=${encodeURIComponent(redirectTo)}`;
+  }
+
+  function handleGuestLogin() {
+    dispatch(guestLogin());
+    localStorage.setItem("isGuest", "true");
+    navigate("/dashboard");
   }
 
   return (
@@ -337,6 +347,23 @@ export default function LandingPage() {
                     Sign in with Google
                   </button>
                   <button
+                    onClick={handleGuestLogin}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-colors"
+                    style={{
+                      background: "transparent",
+                      color: "var(--text2)",
+                      border: "1px solid var(--border)",
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.color = "var(--text)")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.color = "var(--text2)")
+                    }
+                  >
+                    Try as Guest
+                  </button>
+                  <button
                     onClick={handleStart}
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-opacity hover:opacity-90"
                     style={{
@@ -492,6 +519,17 @@ export default function LandingPage() {
               }}
             >
               Open a PDF now <ArrowRight size={15} />
+            </button>
+            <button
+              onClick={handleGuestLogin}
+              className="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 hover:opacity-90 hover:-translate-y-0.5"
+              style={{
+                background: "rgba(255,255,255,0.05)",
+                color: "var(--text)",
+                border: "1px solid var(--border)",
+              }}
+            >
+              Continue as Guest <ArrowRight size={15} className="opacity-50" />
             </button>
             <a
               href="#features"

@@ -17,6 +17,9 @@ import {
 import { motion } from "motion/react";
 import { ReaderApi } from "../apis/readeer.service";
 import DistractionInsights from "../components/Distractioninsights";
+import { useSelector } from "react-redux";
+import { RootState } from "../redux/store";
+import { GuestStorage } from "../services/storageService";
 
 ChartJS.register(LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip);
 
@@ -72,6 +75,7 @@ function StatCard({ icon, label, value, sub, delay = 0 }: any) {
 
 // ── main ──────────────────────────────────────────────────────────────────────
 export default function FileAnalytics() {
+  const { isGuest } = useSelector((state: RootState) => state.auth);
   const { pdfId } = useParams();
   const navigate = useNavigate();
   const [file, setFile] = useState<any>(null);
@@ -79,6 +83,12 @@ export default function FileAnalytics() {
 
   async function fetchData() {
     try {
+      if (isGuest) {
+          const files = await GuestStorage.getRecentFiles();
+          const f = files.find(x => x._id === pdfId);
+          setFile(f || null);
+          return;
+      }
       const r: any = await ReaderApi.getInstance().getRecentFileId(pdfId as string);
       if (r.statusCode === 200) setFile(r.data);
       else setFile(null);

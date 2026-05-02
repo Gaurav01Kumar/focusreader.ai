@@ -1,2 +1,4 @@
-export const getBaseDomain = () =>
-  "https://focus-reader-backend.onrender.com/api/";
+export const getBaseDomain = () => {
+  const base = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+  return base.endsWith("/") ? `${base}api/` : `${base}/api/`;
+};
